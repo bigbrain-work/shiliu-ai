@@ -1,13 +1,8 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import {
-  API_KEY_ENV,
-  MCP_URL,
-  PACKAGE_NAME,
-  SERVER_NAME,
-} from "./constants.js";
-import { readPersistedApiKey } from "./credentials.js";
+import { AUTH_URL, MCP_URL, PACKAGE_NAME, SERVER_NAME } from "./constants.js";
+import { resolveAuthorization } from "./authorization.js";
 import { readToolCatalog } from "./remote-client.js";
 
 async function readText(filePath) {
@@ -36,20 +31,20 @@ export async function inspectLocalConfiguration(home) {
 }
 
 export async function probeMcp(
-  apiKey,
+  token,
   { url = MCP_URL, readCatalog = readToolCatalog } = {},
 ) {
-  if (!apiKey) {
+  if (!token) {
     return {
       ok: false,
-      detail: `${API_KEY_ENV} 尚未设置`,
+      detail: "尚未登录",
       toolCount: 0,
       tools: [],
     };
   }
 
   try {
-    const tools = await readCatalog({ apiKey, url });
+    const tools = await readCatalog({ token, url });
     return {
       ok: true,
       detail: `连接正常，tools/list 返回 ${tools.length} 个工具`,
@@ -75,12 +70,19 @@ export async function getStatus({
   platform = process.platform,
   env = process.env,
   url = MCP_URL,
+  authUrl = AUTH_URL,
   readCatalog,
+  resolveAuth = resolveAuthorization,
 } = {}) {
-  const apiKey = readPersistedApiKey({ platform, env, home });
+  const authorization = await resolveAuth({ home, platform, env, authUrl });
   const configs = await inspectLocalConfiguration(home);
-  const remote = await probeMcp(apiKey, { url, readCatalog });
-  return { credential: Boolean(apiKey), configs, remote };
+  const remote = await probeMcp(authorization.token, { url, readCatalog });
+  return {
+    credential: Boolean(authorization.token),
+    credentialSource: authorization.source,
+    configs,
+    remote,
+  };
 }
 
 export async function printStatus(options = {}) {
@@ -90,6 +92,7 @@ export async function printStatus(options = {}) {
       JSON.stringify(
         {
           credential: result.credential,
+          credentialSource: result.credentialSource,
           configs: result.configs,
           remote: {
             ok: result.remote.ok,
@@ -105,7 +108,7 @@ export async function printStatus(options = {}) {
   }
 
   console.log(
-    `登录凭据          ${mark(result.credential)} ${result.credential ? "已设置" : "未设置"}`,
+    `登录凭据          ${mark(result.credential)} ${result.credential ? `已设置（${result.credentialSource}）` : "未设置"}`,
   );
   console.log(
     `Codex 配置        ${mark(result.configs.codex)} ${result.configs.codex ? "已写入" : "未发现"}`,
@@ -127,12 +130,14 @@ export async function printTools({
   platform = process.platform,
   env = process.env,
   url = MCP_URL,
+  authUrl = AUTH_URL,
   json = false,
   readCatalog = readToolCatalog,
+  resolveAuth = resolveAuthorization,
 } = {}) {
-  const apiKey = readPersistedApiKey({ platform, env, home });
-  if (!apiKey) throw new Error("尚未登录，请先运行 shiliu login");
-  const tools = await readCatalog({ apiKey, url });
+  const authorization = await resolveAuth({ home, platform, env, authUrl });
+  if (!authorization.token) throw new Error("尚未登录，请先运行 shiliu login");
+  const tools = await readCatalog({ token: authorization.token, url });
 
   if (json) {
     console.log(JSON.stringify({ count: tools.length, tools }, null, 2));

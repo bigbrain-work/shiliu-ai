@@ -19,7 +19,7 @@ npx -y skills add bigbrain-work/shiliu-ai -a codex -y
 
 ## 配置 MCP
 
-当前兼容版本使用石榴 AI API Key 完成授权。设备码登录将在服务端授权接口完成后接入，不会在本仓库或 Agent 配置中写死凭据。
+CLI 默认启动微信扫码设备登录，换取短期访问令牌和可轮换刷新令牌。令牌保存在操作系统凭据库中，不会写入本仓库或 Agent 配置。
 
 ```bash
 npx -y @bigbrain-work/mcp-connect login
@@ -32,10 +32,12 @@ npx -y @bigbrain-work/mcp-connect tools
 
 ## 安全原则
 
-- 不在命令参数、仓库、日志或 Agent 配置中保存真实 API Key。
+- 不在命令参数、仓库、日志或 Agent 配置中保存真实凭据。
+- 访问令牌过期前自动刷新；退出登录时撤销刷新令牌并清除本机凭据。
+- 旧 API Key 仅作为迁移期兼容方式，需显式使用 `--legacy-api-key`。
 - 工具清单和参数结构从 MCP 服务实时读取，Skill 不复制一份易过期的接口定义。
 - 长耗时或计费操作仅在用户明确请求后执行，并避免重复提交任务。
 
 ## 当前阶段
 
-本仓库先完成 Skill 和 CLI 的本地验收。网页安装入口、设备码授权和 npm 正式发布在后续阶段统一上线。
+Skill、CLI 与设备授权后台目前处于本地验收阶段。GitHub 公共仓库、网页安装入口、npm 正式发布和生产部署将在全部联调完成后统一上线。

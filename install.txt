@@ -1,0 +1,97 @@
+# Shiliu AI Install
+
+Use this file for installation tasks. Do not fetch the product homepage for installation automation.
+
+## Goal
+
+Install the Shiliu AI CLI, install the Agent skill, authenticate with WeChat, configure the current Agent, and verify the live MCP connection.
+
+## 1. Prerequisite
+
+Node.js 18 or newer is required. Verify it before installation:
+
+```bash
+node --version
+npm --version
+```
+
+## 2. Install CLI
+
+```bash
+# macOS / Linux / Windows Git Bash
+curl -fsSL https://bigbrain.work/shiliuAI/install.sh | sh
+
+# Windows PowerShell
+irm https://bigbrain.work/shiliuAI/install.ps1 | iex
+
+# Direct npm alternative
+npm install -g @bigbrain-work/mcp-connect
+```
+
+## 3. Install Skill
+
+```bash
+# Generic Agent selection
+npx -y skills add bigbrain-work/shiliu-ai -y
+
+# Codex
+npx -y skills add bigbrain-work/shiliu-ai -a codex -y
+
+# Claude Code
+npx -y skills add bigbrain-work/shiliu-ai -a claude-code -y
+
+# Cursor
+npx -y skills add bigbrain-work/shiliu-ai -a cursor -y
+```
+
+## 4. Authenticate
+
+```bash
+shiliu login
+```
+
+The CLI displays a WeChat QR code, validates the issued access token with the live MCP server, and stores the token set in the operating-system credential store. Do not place credentials in commands, source code, or Agent configuration files.
+
+For an Agent or nonblocking environment:
+
+```bash
+shiliu login --no-wait --json
+```
+
+Read `verification_uri`, `user_code`, `poll_command`, and `next_action_hint`. Show the link and code to the human. After the human confirms authorization, run the exact returned `poll_command`. The JSON response never contains the internal device code, access token, or refresh token.
+
+## 5. Configure the Agent
+
+```bash
+# Automatically detect supported local Agents
+shiliu install
+
+# Or target an Agent by name
+shiliu install --agent codex
+```
+
+Unknown safe Agent names are accepted. When no built-in adapter exists, the CLI prints a standard credential-free stdio MCP configuration.
+
+## 6. Verify
+
+```bash
+shiliu status
+shiliu tools
+npx -y skills check
+```
+
+`status` must report a successful authenticated MCP connection. `tools` reads the current live `tools/list` response rather than a bundled static catalog.
+
+## Troubleshooting
+
+```bash
+shiliu logout
+shiliu login
+shiliu status
+```
+
+If a newly installed global command is not found, open a new terminal and run `shiliu status` again.
+
+## Release status
+
+This guide is staged for local acceptance. Do not present these public URLs or repository commands as released until the GitHub repository, npm version, and website routes are published and verified.

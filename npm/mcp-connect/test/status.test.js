@@ -19,7 +19,7 @@ test("probe performs tools/list and reports the live count", async () => {
   assert.equal(result.ok, true);
   assert.equal(result.toolCount, 2);
   assert.deepEqual(received, {
-    apiKey: "secret-value",
+    token: "secret-value",
     url: "https://example.test/mcp",
   });
 });
@@ -32,6 +32,10 @@ test("JSON-ready status never includes the credential value", async () => {
       home,
       platform: "linux",
       env: { [API_KEY_ENV]: secret },
+      resolveAuth: async () => ({
+        token: secret,
+        source: "legacy_api_key",
+      }),
       readCatalog: async () => [{ name: "example" }],
     });
     assert.equal(result.credential, true);

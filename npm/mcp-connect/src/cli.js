@@ -1,10 +1,12 @@
 import os from "node:os";
 import path from "node:path";
 
+import { resolveAuthorization } from "./authorization.js";
 import { parseCliArguments } from "./arguments.js";
 import { configureAgent, stdioServerDefinition } from "./configurators.js";
 import {
   API_KEY_ENV,
+  AUTH_URL,
   MCP_URL,
   PACKAGE_NAME,
   PACKAGE_VERSION,
@@ -14,12 +16,19 @@ import {
 import {
   clearPersistedApiKey,
   persistApiKey,
-  readPersistedApiKey,
   resolveApiKey,
 } from "./credentials.js";
 import { detectInstalledAgents } from "./detection.js";
+import {
+  DeviceAuthClient,
+  DeviceAuthError,
+  renderQrCode,
+  waitForDeviceAuthorization,
+} from "./device-auth-client.js";
+import { verifyAndPersistLogin } from "./login-flow.js";
 import { runProxy } from "./proxy.js";
 import { printStatus, printTools, probeMcp } from "./status.js";
+import { PendingLoginStore, TokenStore } from "./token-store.js";
 import { printUpdateStatus } from "./updater.js";
 
 function printHelp() {
@@ -27,6 +36,8 @@ function printHelp() {
 
 用法：
   shiliu login
+  shiliu login --no-wait --json
+  shiliu login poll --session <id> [--wait] [--json]
   shiliu install [--agent <name>]
   shiliu status [--json]
   shiliu tools [--json]
@@ -43,13 +54,19 @@ function printHelp() {
       --dry-run       只显示将执行的操作
       --home <path>   指定用户目录（主要用于测试）
       --url <url>     指定远程 MCP 地址（诊断或桥接）
+      --auth-url <url> 指定设备授权服务地址（主要用于测试）
+      --legacy-api-key 使用旧 API Key 兼容登录
+      --no-wait       创建登录会话后立即返回
+      --wait          等待指定登录会话完成
+      --session <id>  指定待继续的登录会话
       --json          以 JSON 输出 status/tools
   -h, --help          显示帮助
   -v, --version       显示版本
 
 安全：
-  不提供 --api-key 参数。login 优先读取 ${API_KEY_ENV}，否则隐藏提示输入。
-  真实凭据不会写入生成的 MCP 配置，也不会由 status/tools 输出。
+  login 默认显示微信二维码，换取短期访问令牌和可轮换刷新令牌。
+  令牌保存在系统凭据库，不会写入 Agent 配置，也不会由 status/tools 输出。
+  兼容期可使用 --legacy-api-key；不提供会进入 shell 历史的密钥参数。
 
 智能配置：
   未指定 --agent 时自动检测 ${SUPPORTED_AGENTS.join("、")}。
@@ -70,7 +87,7 @@ ${JSON.stringify(config, null, 2)}
 ${dryRun ? "演练模式没有保存凭据。" : "Agent 配置中不包含真实凭据。"} 请勿将凭据写入项目代码或提交到 Git。`);
 }
 
-async function login({ home, dryRun, url }) {
+async function legacyLogin({ home, dryRun, url }) {
   const apiKey = await resolveApiKey();
   if (!dryRun) {
     const remote = await probeMcp(apiKey, { url });
@@ -84,14 +101,218 @@ async function login({ home, dryRun, url }) {
   );
 }
 
-async function ensureLogin({ home, dryRun, url }) {
-  const persisted = readPersistedApiKey({ home })?.trim();
-  if (persisted) return;
-  await login({ home, dryRun, url });
+function buildPendingLogin(start, authUrl) {
+  return {
+    sessionId: start.user_code,
+    deviceCode: start.device_code,
+    expiresAt: Date.now() + Number(start.expires_in) * 1000,
+    interval: Number(start.interval) || 5,
+    authUrl,
+  };
 }
 
-async function install({ agent, dryRun, home, url }) {
-  await ensureLogin({ home, dryRun, url });
+export function buildLoginInstructions(start) {
+  const sessionId = start.user_code;
+  return {
+    status: "authorization_pending",
+    login_session_id: sessionId,
+    user_code: start.user_code,
+    verification_uri:
+      start.verification_uri_complete ||
+      start.qr_code_uri ||
+      start.verification_uri,
+    expires_in: Number(start.expires_in),
+    poll_command: `shiliu login poll --session ${sessionId} --wait --json`,
+    next_action_hint:
+      "请让用户打开 verification_uri 完成微信授权；用户确认后运行 poll_command。",
+  };
+}
+
+function printJson(value) {
+  console.log(JSON.stringify(value, null, 2));
+}
+
+async function startPendingDeviceLogin({ authUrl, json, pendingLoginStore }) {
+  const client = new DeviceAuthClient({ baseUrl: authUrl });
+  const start = await client.start();
+  await pendingLoginStore.save(buildPendingLogin(start, authUrl));
+  const instructions = buildLoginInstructions(start);
+  if (json) {
+    printJson(instructions);
+    return;
+  }
+  console.log(`请使用微信扫描二维码完成登录（验证码 ${start.user_code}）：`);
+  console.log(await renderQrCode(start.qr_code_uri));
+  console.log(`也可以打开：${instructions.verification_uri}`);
+  console.log(
+    `完成后运行：${instructions.poll_command.replace(" --json", "")}`,
+  );
+}
+
+async function pollPendingDeviceLogin({
+  session,
+  wait,
+  json,
+  url,
+  tokenStore,
+  pendingLoginStore,
+}) {
+  if (!session) throw new Error("login poll 需要 --session <id>");
+  const pending = await pendingLoginStore.load();
+  if (!pending || pending.sessionId !== session) {
+    throw new Error("未找到对应的待处理登录会话，请重新运行 shiliu login");
+  }
+  if (pending.expiresAt <= Date.now()) {
+    await pendingLoginStore.clear();
+    throw new Error("登录会话已过期，请重新运行 shiliu login");
+  }
+
+  const client = new DeviceAuthClient({ baseUrl: pending.authUrl });
+  let response;
+  try {
+    if (wait) {
+      response = await waitForDeviceAuthorization(
+        {
+          device_code: pending.deviceCode,
+          expires_in: Math.max(
+            1,
+            Math.ceil((pending.expiresAt - Date.now()) / 1000),
+          ),
+          interval: pending.interval,
+        },
+        client,
+        { onPending: json ? undefined : () => process.stdout.write(".") },
+      );
+      if (!json) process.stdout.write("\n");
+    } else {
+      response = await client.exchange(pending.deviceCode);
+    }
+  } catch (error) {
+    if (
+      error instanceof DeviceAuthError &&
+      ["authorization_pending", "slow_down"].includes(error.code)
+    ) {
+      const result = {
+        status: "authorization_pending",
+        login_session_id: pending.sessionId,
+        poll_command: `shiliu login poll --session ${pending.sessionId} --wait --json`,
+      };
+      if (json) printJson(result);
+      else console.log("登录尚未完成，请授权后重新运行并加上 --wait。");
+      return;
+    }
+    if (error instanceof DeviceAuthError && error.code === "expired_token") {
+      await pendingLoginStore.clear();
+    }
+    throw error;
+  }
+
+  const remote = await verifyAndPersistLogin({
+    response,
+    client,
+    tokenStore,
+    url,
+  });
+  await pendingLoginStore.clear();
+  const result = {
+    status: "success",
+    message: "登录成功",
+    tool_count: remote.toolCount,
+  };
+  if (json) printJson(result);
+  else console.log(`登录成功：${remote.detail}；令牌已保存到系统凭据库。`);
+}
+
+async function deviceLogin({
+  dryRun,
+  authUrl,
+  url,
+  tokenStore,
+  pendingLoginStore,
+  noWait,
+  json,
+}) {
+  if (dryRun) {
+    console.log(
+      `登录演练：将从 ${authUrl} 获取设备码、显示微信二维码，并把令牌保存到系统凭据库；未发起网络请求。`,
+    );
+    return;
+  }
+
+  if (noWait) {
+    return startPendingDeviceLogin({ authUrl, json, pendingLoginStore });
+  }
+
+  const client = new DeviceAuthClient({ baseUrl: authUrl });
+  const start = await client.start();
+  console.log(`请使用微信扫描二维码完成登录（验证码 ${start.user_code}）：`);
+  console.log(await renderQrCode(start.qr_code_uri));
+  console.log(
+    `若终端二维码无法识别，请打开：${start.verification_uri_complete}`,
+  );
+  const response = await waitForDeviceAuthorization(start, client, {
+    onPending: () => process.stdout.write("."),
+  });
+  process.stdout.write("\n");
+  const remote = await verifyAndPersistLogin({
+    response,
+    client,
+    tokenStore,
+    url,
+  });
+  console.log(`登录成功：${remote.detail}；短期访问令牌已保存到系统凭据库。`);
+}
+
+async function login({
+  home,
+  dryRun,
+  url,
+  authUrl,
+  legacyApiKey,
+  tokenStore,
+  pendingLoginStore,
+  noWait = false,
+  json = false,
+}) {
+  if (legacyApiKey) return legacyLogin({ home, dryRun, url });
+  return deviceLogin({
+    dryRun,
+    authUrl,
+    url,
+    tokenStore,
+    pendingLoginStore,
+    noWait,
+    json,
+  });
+}
+
+async function ensureLogin(options) {
+  const authorization = await resolveAuthorization({
+    home: options.home,
+    authUrl: options.authUrl,
+    tokenStore: options.tokenStore,
+  });
+  if (authorization.token) return;
+  await login(options);
+}
+
+async function install({
+  agent,
+  dryRun,
+  home,
+  url,
+  authUrl,
+  legacyApiKey,
+  tokenStore,
+}) {
+  await ensureLogin({
+    home,
+    dryRun,
+    url,
+    authUrl,
+    legacyApiKey,
+    tokenStore,
+  });
   const requestedAgent = agent === "auto" ? undefined : agent;
   if (requestedAgent && !SUPPORTED_AGENTS.includes(requestedAgent)) {
     printGenericInstructions(requestedAgent, { dryRun });
@@ -125,30 +346,68 @@ export async function runCli(argv = process.argv.slice(2)) {
 
   const home = path.resolve(options.home || os.homedir());
   const url = options.url || MCP_URL;
+  const authUrl = options.authUrl || AUTH_URL;
+  const tokenStore = new TokenStore();
+  const pendingLoginStore = new PendingLoginStore();
   if (options.command === "mcp" || options.command === "proxy") {
-    await runProxy({ home, url });
+    await runProxy({ home, url, authUrl });
     return;
   }
   if (options.command === "login") {
-    await login({ home, dryRun: options.dryRun, url });
+    if (options.subcommand === "poll") {
+      await pollPendingDeviceLogin({
+        session: options.session,
+        wait: options.wait,
+        json: options.json,
+        url,
+        tokenStore,
+        pendingLoginStore,
+      });
+      return;
+    }
+    await login({
+      home,
+      dryRun: options.dryRun,
+      url,
+      authUrl,
+      legacyApiKey: options.legacyApiKey,
+      tokenStore,
+      pendingLoginStore,
+      noWait: options.noWait,
+      json: options.json,
+    });
     return;
   }
   if (options.command === "logout") {
+    const current = await tokenStore.load();
+    if (!options.dryRun && current?.refreshToken) {
+      const client = new DeviceAuthClient({ baseUrl: authUrl });
+      await client.revoke(current.refreshToken).catch(() => undefined);
+    }
+    if (!options.dryRun) {
+      await tokenStore.clear();
+      await pendingLoginStore.clear();
+    }
     await clearPersistedApiKey({ home, dryRun: options.dryRun });
     console.log(
       options.dryRun
         ? "演练模式：未清除本机凭据。"
-        : "已退出登录并清除本机兼容凭据。",
+        : "已退出登录，并从系统凭据库清除令牌和旧版兼容凭据。",
     );
     return;
   }
   if (options.command === "status") {
-    const result = await printStatus({ home, url, json: options.json });
+    const result = await printStatus({
+      home,
+      url,
+      authUrl,
+      json: options.json,
+    });
     if (!result.remote.ok) process.exitCode = 1;
     return;
   }
   if (options.command === "tools") {
-    await printTools({ home, url, json: options.json });
+    await printTools({ home, url, authUrl, json: options.json });
     return;
   }
   if (options.command === "update") {
@@ -160,5 +419,8 @@ export async function runCli(argv = process.argv.slice(2)) {
     dryRun: options.dryRun,
     home,
     url,
+    authUrl,
+    legacyApiKey: options.legacyApiKey,
+    tokenStore,
   });
 }

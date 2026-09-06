@@ -5,8 +5,12 @@
 ## 命令
 
 ```bash
-# 当前兼容授权（隐藏输入，不把密钥放进命令参数）
+# 微信扫码登录；令牌进入操作系统凭据库
 npx -y @bigbrain-work/mcp-connect login
+
+# Agent/无头环境：先创建会话并立即返回，再按返回的 poll_command 继续
+npx -y @bigbrain-work/mcp-connect login --no-wait --json
+npx -y @bigbrain-work/mcp-connect login poll --session <会话号> --wait --json
 
 # 自动检测并配置已安装的 Agent
 npx -y @bigbrain-work/mcp-connect install
@@ -20,7 +24,7 @@ npx -y @bigbrain-work/mcp-connect status
 # 显示服务实时返回的工具
 npx -y @bigbrain-work/mcp-connect tools
 
-# 清除本机当前兼容凭据
+# 撤销刷新令牌并清除本机凭据
 npx -y @bigbrain-work/mcp-connect logout
 ```
 
@@ -37,7 +41,10 @@ npx -y @bigbrain-work/mcp-connect install --agent openclaw
 ## 凭据安全
 
 - 不支持 `--api-key` 参数，避免密钥进入 shell 历史。
-- 不将真实密钥写入 Agent 的 MCP 配置。
-- `status --json` 与 `tools --json` 不输出密钥。
+- 默认微信扫码后获得短期访问令牌；过期前使用可轮换刷新令牌自动更新。
+- 令牌保存在 Windows Credential Manager、macOS Keychain 或 Linux Secret Service，不写入 Agent 的 MCP 配置。
+- 登录后先以新访问令牌调用一次 `tools/list`，验证成功后才保存。
+- 非阻塞登录只把设备码暂存在系统凭据库，JSON 输出不包含设备码或访问令牌。
+- `status --json` 与 `tools --json` 不输出任何令牌。
 
-目前 `login` 沿用 API Key 兼容流程。设备码授权完成后会在保持命令不变的前提下替换底层授权实现。
+迁移期如确需使用现有 API Key，可显式运行 `login --legacy-api-key`；此入口将在设备登录稳定后移除。
