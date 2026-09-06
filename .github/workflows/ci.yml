@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: npm/mcp-connect/package-lock.json
+
+      - name: Install CLI dependencies
+        run: npm ci --prefix npm/mcp-connect
+
+      - name: Test CLI
+        run: npm test --prefix npm/mcp-connect
+
+      - name: Verify package contents
+        run: npm run pack:check --prefix npm/mcp-connect
+
+      - name: Discover public skills
+        run: npx -y skills add . --list -a codex
