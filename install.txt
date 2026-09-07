@@ -94,4 +94,4 @@ If a newly installed global command is not found, open a new terminal and run `s
 
 ## Release status
 
-This guide is staged for local acceptance. Do not present these public URLs or repository commands as released until the GitHub repository, npm version, and website routes are published and verified.
+The public GitHub repository and npm package are released. This file is the canonical machine-readable installation guide. After installation, verify the active CLI and live MCP connection with `shiliu --version` and `shiliu status`.

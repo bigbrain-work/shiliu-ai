@@ -9,7 +9,7 @@
 
 ## 安装 Skill
 
-公共仓库发布后可使用：
+可以直接使用：
 
 ```bash
 npx -y skills add bigbrain-work/shiliu-ai -a codex -y
@@ -38,6 +38,8 @@ npx -y @bigbrain-work/mcp-connect tools
 - 工具清单和参数结构从 MCP 服务实时读取，Skill 不复制一份易过期的接口定义。
 - 长耗时或计费操作仅在用户明确请求后执行，并避免重复提交任务。
 
-## 当前阶段
+## 发布状态
 
-Skill、CLI 与设备授权后台目前处于本地验收阶段。GitHub 公共仓库、网页安装入口、npm 正式发布和生产部署将在全部联调完成后统一上线。
+- 公共仓库：`bigbrain-work/shiliu-ai`
+- npm：`@bigbrain-work/mcp-connect@1.3.0`
+- 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
