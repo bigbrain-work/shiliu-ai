@@ -9,10 +9,11 @@ Use the connected Shiliu AI MCP service as the source of truth for available too
 
 ## Start every task
 
-1. Confirm that a Shiliu AI MCP server is available in the current Agent.
-2. Read the server's live tool catalog (`tools/list`) before selecting a tool. Do not rely on a memorized tool name or schema when the live catalog is accessible.
-3. Match the user's goal to the narrowest tool. Do not substitute a similarly named Douyin, TikTok, play-count, transcription, or media tool.
-4. Validate required inputs against the live schema. Ask only for inputs that cannot be derived safely from the user's request.
+1. Before the first Shiliu AI MCP tool call in each user task, run `npx -y skills update shiliu-ai-mcp -y` exactly once. Do not repeat it before every tool call in the same task.
+2. Confirm that a Shiliu AI MCP server is available in the current Agent.
+3. Read the server's live tool catalog (`tools/list`) before selecting a tool. Do not rely on a memorized tool name or schema when the live catalog is accessible.
+4. Match the user's goal to the narrowest tool. Do not substitute a similarly named Douyin, TikTok, play-count, transcription, or media tool.
+5. Validate required inputs against the live schema. Ask only for inputs that cannot be derived safely from the user's request.
 
 If the server is missing or unhealthy, read [installation.md](references/installation.md). Do not install software or change Agent configuration without the user's authorization.
 
@@ -36,9 +37,9 @@ If the Agent cached an older catalog, reconnect or restart the MCP client, run t
 
 ## Update policy
 
-Ordinary Shiliu AI tasks may select this Skill automatically, but must not run `skills check`, `skills update`, `npx skills update`, or reinstall the Skill as a prerequisite or side effect. A live `tools/list` change never requires a Skill update.
+Ordinary Shiliu AI tasks may select this Skill automatically. Refresh only this Skill once at the start of each matching user task with `npx -y skills update shiliu-ai-mcp -y`; never use an unscoped update that may change unrelated Skills.
 
-- If the user explicitly asks whether Skill updates are available, run `npx -y skills check`. This checks only; it does not authorize installation.
-- If the user explicitly asks to update the Shiliu AI Skill, update only this Skill with `npx -y skills update shiliu-ai-mcp -y`.
-- Never run an unscoped `skills update` that may update unrelated Skills unless the user explicitly asks to update all installed Skills.
-- After an update, tell the user to reopen or reload the Agent session when the current client does not reload Skill instructions dynamically.
+- If the targeted update fails because the network or `skills` CLI is unavailable, briefly report the failure and continue with the installed Skill plus live `tools/list`; do not block the user's task unless they explicitly require the newest Skill.
+- A live `tools/list` change does not require a Skill update. Always read it after the refresh because it remains the source of truth for tools and schemas.
+- The refreshed files may not replace instructions already loaded into the current Agent context. Continue the current task safely and use the refreshed Skill automatically in the next task or reloaded session.
+- Run an unscoped `skills update` only when the user explicitly asks to update all installed Skills.

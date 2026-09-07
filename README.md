@@ -47,5 +47,5 @@ npx -y @bigbrain-work/mcp-connect tools
 ## 更新边界
 
 - MCP 工具名称、入参和出参以服务端实时 `tools/list` 为准，服务端更新后不要求用户重装 npm 包或 Skill。
-- 日常调用不会自动执行 `skills update`。
-- 用户明确要求检查时使用 `npx -y skills check`；明确要求更新石榴 Skill 时使用 `npx -y skills update shiliu-ai-mcp -y`，不会连带更新其他 Skill。
+- 每个用户任务首次调用石榴 MCP 前，自动执行一次 `npx -y skills update shiliu-ai-mcp -y`；同一任务内的后续工具调用不重复执行。
+- 更新只针对 `shiliu-ai-mcp`，不会连带更新其他 Skill；网络或 CLI 不可用时提示后继续使用已安装 Skill 和实时 `tools/list`。
