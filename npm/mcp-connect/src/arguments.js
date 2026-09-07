@@ -8,6 +8,7 @@ const COMMANDS = new Set([
   "tools",
   "mcp",
   "proxy",
+  "skill",
   "update",
 ]);
 
@@ -50,6 +51,10 @@ export function parseCliArguments(args) {
         type: "boolean",
         default: false,
       },
+      force: {
+        type: "boolean",
+        default: false,
+      },
       session: {
         type: "string",
       },
@@ -75,9 +80,13 @@ export function parseCliArguments(args) {
     throw new Error(`不支持的命令：${command}`);
   }
   const subcommand = parsed.positionals[1];
+  const validSubcommand =
+    (command === "login" && subcommand === "poll") ||
+    (command === "skill" && subcommand === "refresh");
   if (
     parsed.positionals.length > 2 ||
-    (subcommand && !(command === "login" && subcommand === "poll"))
+    (subcommand && !validSubcommand) ||
+    (command === "skill" && subcommand !== "refresh")
   ) {
     throw new Error(`无法识别的参数：${parsed.positionals.slice(1).join(" ")}`);
   }
@@ -103,6 +112,7 @@ export function parseCliArguments(args) {
     legacyApiKey: parsed.values["legacy-api-key"],
     noWait: parsed.values["no-wait"],
     wait: parsed.values.wait,
+    force: parsed.values.force,
     session,
     json: parsed.values.json,
     help: parsed.values.help,

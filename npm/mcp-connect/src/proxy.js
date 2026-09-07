@@ -20,12 +20,14 @@ export async function runProxy({
   authUrl = AUTH_URL,
   platform = process.platform,
   env = process.env,
+  tokenStore,
 } = {}) {
   const authorization = await resolveAuthorization({
     home,
     platform,
     env,
     authUrl,
+    tokenStore,
   });
   if (!authorization.token) {
     throw new Error(

@@ -33,6 +33,7 @@ import {
   validateMcpUrl,
 } from "./security.js";
 import { printStatus, printTools, probeMcp } from "./status.js";
+import { printSkillRefresh } from "./skill-refresh.js";
 import { PendingLoginStore, TokenStore } from "./token-store.js";
 import { printUpdateStatus } from "./updater.js";
 
@@ -46,6 +47,7 @@ function printHelp() {
   shiliu install [--agent <name>]
   shiliu status [--json]
   shiliu tools [--json]
+  shiliu skill refresh [--force] [--json]
   shiliu update
   shiliu logout
   shiliu mcp
@@ -64,6 +66,7 @@ function printHelp() {
       --legacy-api-key 使用旧 API Key 兼容登录
       --no-wait       创建登录会话后立即返回
       --wait          等待指定登录会话完成
+      --force         忽略24小时冷却并立即检查石榴 Skill
       --session <id>  指定待继续的登录会话
       --json          以 JSON 输出 status/tools
   -h, --help          显示帮助
@@ -402,6 +405,14 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
 
   const home = path.resolve(options.home || os.homedir());
+  if (options.command === "skill") {
+    await printSkillRefresh({
+      home,
+      force: options.force,
+      json: options.json,
+    });
+    return;
+  }
   const url = validateMcpUrl(options.url || MCP_URL, {
     allowLocalhost: options.allowLocalhost,
   });

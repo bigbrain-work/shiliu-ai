@@ -16,6 +16,7 @@ test("defaults to smart install", () => {
     legacyApiKey: false,
     noWait: false,
     wait: false,
+    force: false,
     session: undefined,
     json: false,
     help: false,
@@ -53,6 +54,10 @@ test("supports the formal command surface", () => {
   ]) {
     assert.equal(parseCliArguments([command]).command, command);
   }
+  const skillRefresh = parseCliArguments(["skill", "refresh", "--force"]);
+  assert.equal(skillRefresh.command, "skill");
+  assert.equal(skillRefresh.subcommand, "refresh");
+  assert.equal(skillRefresh.force, true);
 });
 
 test("allows arbitrary safe agent names", () => {
@@ -72,6 +77,7 @@ test("rejects unsafe agent names and extra positionals", () => {
     /客户端名称/u,
   );
   assert.throws(() => parseCliArguments(["status", "extra"]), /无法识别/u);
+  assert.throws(() => parseCliArguments(["skill"]), /无法识别/u);
   assert.throws(
     () => parseCliArguments(["login", "poll", "--session", "$(calc)"]),
     /登录会话编号格式无效/u,
