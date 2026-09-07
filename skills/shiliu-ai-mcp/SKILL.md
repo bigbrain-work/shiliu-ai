@@ -1,6 +1,6 @@
 ---
 name: shiliu-ai-mcp
-description: "Use Shiliu AI MCP when the user explicitly wants 石榴 AI capabilities: Douyin or TikTok author/video data, engagement or play-count data, video or audio text extraction, AI speech/video generation, local video editing, Feishu data-sync tasks, task status, or points balance. Do not trigger for general web search or unrelated media work. Discover the live MCP tool catalog before choosing a tool because tools and schemas can change."
+description: "Use Shiliu AI MCP when a request involves Douyin or TikTok author/video data, engagement or play-count data, video or audio text extraction, AI speech/video generation, local video editing, Feishu data-sync tasks, Shiliu task status, or Shiliu points balance, even when the user does not name Shiliu AI. Do not trigger for general web search or unrelated media work. Discover the live MCP tool catalog before choosing a tool because tools and schemas can change."
 ---
 
 # Shiliu AI MCP
@@ -33,3 +33,12 @@ Read [workflows.md](references/workflows.md) for task patterns and [billing.md](
 When a tool is added, removed, or its fields change, prefer the new live catalog immediately. The Skill describes selection and safety behavior; it intentionally does not duplicate the complete tool schema.
 
 If the Agent cached an older catalog, reconnect or restart the MCP client, run the CLI health check, and read `tools/list` again before concluding that a tool is unavailable.
+
+## Update policy
+
+Ordinary Shiliu AI tasks may select this Skill automatically, but must not run `skills check`, `skills update`, `npx skills update`, or reinstall the Skill as a prerequisite or side effect. A live `tools/list` change never requires a Skill update.
+
+- If the user explicitly asks whether Skill updates are available, run `npx -y skills check`. This checks only; it does not authorize installation.
+- If the user explicitly asks to update the Shiliu AI Skill, update only this Skill with `npx -y skills update shiliu-ai-mcp -y`.
+- Never run an unscoped `skills update` that may update unrelated Skills unless the user explicitly asks to update all installed Skills.
+- After an update, tell the user to reopen or reload the Agent session when the current client does not reload Skill instructions dynamically.
