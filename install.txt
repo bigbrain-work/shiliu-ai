@@ -77,10 +77,26 @@ Unknown safe Agent names are accepted. When no built-in adapter exists, the CLI 
 ```bash
 shiliu status
 shiliu tools
-npx -y skills check
+shiliu update
 ```
 
-`status` must report a successful authenticated MCP connection. `tools` reads the current live `tools/list` response rather than a bundled static catalog.
+`status` must report a successful authenticated MCP connection. `tools` reads the current live `tools/list` response rather than a bundled static catalog. `update` checks the CLI version on npm but does not install anything or update Agent Skills.
+
+## 7. Update policy
+
+Ordinary Shiliu AI use must not run `skills update` automatically. New MCP tools and field changes are discovered from live `tools/list`; they do not require a Skill or npm update.
+
+Only when the human explicitly asks:
+
+```bash
+# Check whether installed Skills have updates; do not install
+npx -y skills check
+
+# Update only the Shiliu AI Skill
+npx -y skills update shiliu-ai-mcp -y
+```
+
+Never run an unscoped `skills update` unless the human explicitly asks to update all installed Skills. After updating the Skill, reopen or reload the Agent session if it does not reload Skill instructions dynamically.
 
 ## Troubleshooting
 

@@ -43,3 +43,9 @@ npx -y @bigbrain-work/mcp-connect tools
 - 公共仓库：`bigbrain-work/shiliu-ai`
 - npm：`@bigbrain-work/mcp-connect@1.3.0`
 - 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
+
+## 更新边界
+
+- MCP 工具名称、入参和出参以服务端实时 `tools/list` 为准，服务端更新后不要求用户重装 npm 包或 Skill。
+- 日常调用不会自动执行 `skills update`。
+- 用户明确要求检查时使用 `npx -y skills check`；明确要求更新石榴 Skill 时使用 `npx -y skills update shiliu-ai-mcp -y`，不会连带更新其他 Skill。
