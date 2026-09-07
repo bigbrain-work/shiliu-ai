@@ -1,6 +1,6 @@
 {
   "name": "@bigbrain-work/mcp-connect",
-  "version": "1.3.0-dev.0",
+  "version": "1.3.0",
   "description": "石榴 AI 官方 CLI：登录、配置 Agent、检查 MCP 状态并桥接远程工具。",
   "type": "module",
   "bin": {
