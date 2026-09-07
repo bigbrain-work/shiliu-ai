@@ -83,7 +83,9 @@ function validatePendingLogin(value) {
     typeof value.deviceCode !== "string" ||
     typeof value.expiresAt !== "number" ||
     typeof value.interval !== "number" ||
-    typeof value.authUrl !== "string"
+    typeof value.authUrl !== "string" ||
+    (value.allowLocalhost !== undefined &&
+      typeof value.allowLocalhost !== "boolean")
   ) {
     throw new Error("待处理登录会话格式无效，请重新运行 shiliu login");
   }

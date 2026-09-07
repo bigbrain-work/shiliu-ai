@@ -100,7 +100,13 @@ test(
     const url = `http://127.0.0.1:${address.port}/mcp`;
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [path.resolve("bin/shiliu.js"), "mcp", "--url", url],
+      args: [
+        path.resolve("bin/shiliu.js"),
+        "mcp",
+        "--url",
+        url,
+        "--allow-localhost",
+      ],
       env: { ...process.env, [API_KEY_ENV]: "integration-secret" },
       stderr: "pipe",
     });

@@ -30,6 +30,10 @@ npx -y @bigbrain-work/mcp-connect logout
 
 安装后也可使用 `shiliu` 命令。原有 `mcp-connect` 命令保持兼容。
 
+`--url` 和 `--auth-url` 默认只接受石榴 AI 正式服务地址。开发者如需连接
+`127.0.0.1`、`localhost` 或 `::1` 上的测试服务，必须显式添加
+`--allow-localhost`；该开关不会放行局域网或公网第三方地址。
+
 ## 通用 Agent
 
 ```bash

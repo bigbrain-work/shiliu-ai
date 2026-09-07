@@ -19,3 +19,16 @@ test("machine-readable login continuation never exposes the device code", () => 
   assert.equal(serialized.includes("secret-device-code"), false);
   assert.equal(Object.hasOwn(result, "device_code"), false);
 });
+
+test("machine-readable continuation rejects a command-injection user code", () => {
+  assert.throws(
+    () =>
+      buildLoginInstructions({
+        device_code: "secret-device-code",
+        user_code: "ABCD-2345 && calc",
+        verification_uri_complete: "https://example.test/authorize",
+        expires_in: 600,
+      }),
+    /登录会话编号格式无效/u,
+  );
+});

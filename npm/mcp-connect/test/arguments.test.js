@@ -12,6 +12,7 @@ test("defaults to smart install", () => {
     home: undefined,
     url: undefined,
     authUrl: undefined,
+    allowLocalhost: false,
     legacyApiKey: false,
     noWait: false,
     wait: false,
@@ -71,4 +72,8 @@ test("rejects unsafe agent names and extra positionals", () => {
     /客户端名称/u,
   );
   assert.throws(() => parseCliArguments(["status", "extra"]), /无法识别/u);
+  assert.throws(
+    () => parseCliArguments(["login", "poll", "--session", "$(calc)"]),
+    /登录会话编号格式无效/u,
+  );
 });

@@ -11,13 +11,28 @@ export async function verifyAndPersistLogin({
   const tokenSet = normalizeTokenResponse(response);
   const remote = await probe(tokenSet.accessToken, { url });
   if (!remote.ok) {
-    await client.revoke(tokenSet.refreshToken).catch(() => undefined);
-    throw new Error(`登录令牌验证失败：${remote.detail}`);
+    const validationError = new Error(`登录令牌验证失败：${remote.detail}`);
+    try {
+      await client.revoke(tokenSet.refreshToken);
+    } catch (revokeError) {
+      throw new AggregateError(
+        [validationError, revokeError],
+        `登录令牌验证失败，且远端令牌撤销失败：${remote.detail}`,
+      );
+    }
+    throw validationError;
   }
   try {
     await tokenStore.save(tokenSet);
   } catch (error) {
-    await client.revoke(tokenSet.refreshToken).catch(() => undefined);
+    try {
+      await client.revoke(tokenSet.refreshToken);
+    } catch (revokeError) {
+      throw new AggregateError(
+        [error, revokeError],
+        `本机凭据保存失败，且远端令牌撤销失败：${error.message}`,
+      );
+    }
     throw error;
   }
   return remote;

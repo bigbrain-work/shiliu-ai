@@ -34,6 +34,10 @@ export function parseCliArguments(args) {
       "auth-url": {
         type: "string",
       },
+      "allow-localhost": {
+        type: "boolean",
+        default: false,
+      },
       "legacy-api-key": {
         type: "boolean",
         default: false,
@@ -83,7 +87,7 @@ export function parseCliArguments(args) {
     throw new Error("客户端名称只能包含小写字母、数字、下划线和连字符");
   }
   const session = parsed.values.session;
-  if (session && !/^[A-Za-z0-9_-]{4,128}$/u.test(session)) {
+  if (session && !/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/u.test(session)) {
     throw new Error("登录会话编号格式无效");
   }
 
@@ -95,6 +99,7 @@ export function parseCliArguments(args) {
     home: parsed.values.home,
     url: parsed.values.url,
     authUrl: parsed.values["auth-url"],
+    allowLocalhost: parsed.values["allow-localhost"],
     legacyApiKey: parsed.values["legacy-api-key"],
     noWait: parsed.values["no-wait"],
     wait: parsed.values.wait,

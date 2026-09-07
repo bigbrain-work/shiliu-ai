@@ -27,6 +27,11 @@ import {
 } from "./device-auth-client.js";
 import { verifyAndPersistLogin } from "./login-flow.js";
 import { runProxy } from "./proxy.js";
+import {
+  normalizeDeviceUserCode,
+  validateAuthUrl,
+  validateMcpUrl,
+} from "./security.js";
 import { printStatus, printTools, probeMcp } from "./status.js";
 import { PendingLoginStore, TokenStore } from "./token-store.js";
 import { printUpdateStatus } from "./updater.js";
@@ -53,8 +58,9 @@ function printHelp() {
   -a, --agent <name>  配置指定客户端
       --dry-run       只显示将执行的操作
       --home <path>   指定用户目录（主要用于测试）
-      --url <url>     指定远程 MCP 地址（诊断或桥接）
-      --auth-url <url> 指定设备授权服务地址（主要用于测试）
+      --url <url>     指定石榴 AI MCP 地址（诊断或本机测试）
+      --auth-url <url> 指定石榴 AI 授权地址（主要用于本机测试）
+      --allow-localhost 显式允许连接本机回环测试服务
       --legacy-api-key 使用旧 API Key 兼容登录
       --no-wait       创建登录会话后立即返回
       --wait          等待指定登录会话完成
@@ -101,18 +107,20 @@ async function legacyLogin({ home, dryRun, url }) {
   );
 }
 
-function buildPendingLogin(start, authUrl) {
+function buildPendingLogin(start, authUrl, allowLocalhost) {
   return {
-    sessionId: start.user_code,
+    sessionId: normalizeDeviceUserCode(start.user_code),
     deviceCode: start.device_code,
     expiresAt: Date.now() + Number(start.expires_in) * 1000,
     interval: Number(start.interval) || 5,
     authUrl,
+    allowLocalhost,
   };
 }
 
-export function buildLoginInstructions(start) {
-  const sessionId = start.user_code;
+export function buildLoginInstructions(start, { allowLocalhost = false } = {}) {
+  const sessionId = normalizeDeviceUserCode(start.user_code);
+  const localhostOption = allowLocalhost ? " --allow-localhost" : "";
   return {
     status: "authorization_pending",
     login_session_id: sessionId,
@@ -122,7 +130,7 @@ export function buildLoginInstructions(start) {
       start.qr_code_uri ||
       start.verification_uri,
     expires_in: Number(start.expires_in),
-    poll_command: `shiliu login poll --session ${sessionId} --wait --json`,
+    poll_command: `shiliu login poll --session ${sessionId} --wait --json${localhostOption}`,
     next_action_hint:
       "请让用户打开 verification_uri 完成微信授权；用户确认后运行 poll_command。",
   };
@@ -132,11 +140,18 @@ function printJson(value) {
   console.log(JSON.stringify(value, null, 2));
 }
 
-async function startPendingDeviceLogin({ authUrl, json, pendingLoginStore }) {
+async function startPendingDeviceLogin({
+  authUrl,
+  allowLocalhost,
+  json,
+  pendingLoginStore,
+}) {
   const client = new DeviceAuthClient({ baseUrl: authUrl });
   const start = await client.start();
-  await pendingLoginStore.save(buildPendingLogin(start, authUrl));
-  const instructions = buildLoginInstructions(start);
+  await pendingLoginStore.save(
+    buildPendingLogin(start, authUrl, allowLocalhost),
+  );
+  const instructions = buildLoginInstructions(start, { allowLocalhost });
   if (json) {
     printJson(instructions);
     return;
@@ -167,7 +182,10 @@ async function pollPendingDeviceLogin({
     throw new Error("登录会话已过期，请重新运行 shiliu login");
   }
 
-  const client = new DeviceAuthClient({ baseUrl: pending.authUrl });
+  const pendingAuthUrl = validateAuthUrl(pending.authUrl, {
+    allowLocalhost: pending.allowLocalhost === true,
+  });
+  const client = new DeviceAuthClient({ baseUrl: pendingAuthUrl });
   let response;
   try {
     if (wait) {
@@ -231,6 +249,7 @@ async function deviceLogin({
   pendingLoginStore,
   noWait,
   json,
+  allowLocalhost,
 }) {
   if (dryRun) {
     console.log(
@@ -240,7 +259,12 @@ async function deviceLogin({
   }
 
   if (noWait) {
-    return startPendingDeviceLogin({ authUrl, json, pendingLoginStore });
+    return startPendingDeviceLogin({
+      authUrl,
+      allowLocalhost,
+      json,
+      pendingLoginStore,
+    });
   }
 
   const client = new DeviceAuthClient({ baseUrl: authUrl });
@@ -273,6 +297,7 @@ async function login({
   pendingLoginStore,
   noWait = false,
   json = false,
+  allowLocalhost = false,
 }) {
   if (legacyApiKey) return legacyLogin({ home, dryRun, url });
   return deviceLogin({
@@ -283,7 +308,39 @@ async function login({
     pendingLoginStore,
     noWait,
     json,
+    allowLocalhost,
   });
+}
+
+export async function logout({
+  home,
+  dryRun,
+  authUrl,
+  tokenStore,
+  pendingLoginStore,
+  clearLegacyApiKey = clearPersistedApiKey,
+  clientFactory = (baseUrl) => new DeviceAuthClient({ baseUrl }),
+}) {
+  if (dryRun) {
+    console.log("演练模式：未清除本机凭据。");
+    return;
+  }
+
+  const current = await tokenStore.load();
+  if (current?.refreshToken) {
+    try {
+      await clientFactory(authUrl).revoke(current.refreshToken);
+    } catch (error) {
+      throw new Error(
+        `远端令牌撤销失败，本机凭据已保留，请稍后重试退出：${error.message}`,
+      );
+    }
+  }
+
+  await tokenStore.clear();
+  await pendingLoginStore.clear();
+  await clearLegacyApiKey({ home, dryRun: false });
+  console.log("已退出登录，并从系统凭据库清除令牌和旧版兼容凭据。");
 }
 
 async function ensureLogin(options) {
@@ -345,8 +402,12 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
 
   const home = path.resolve(options.home || os.homedir());
-  const url = options.url || MCP_URL;
-  const authUrl = options.authUrl || AUTH_URL;
+  const url = validateMcpUrl(options.url || MCP_URL, {
+    allowLocalhost: options.allowLocalhost,
+  });
+  const authUrl = validateAuthUrl(options.authUrl || AUTH_URL, {
+    allowLocalhost: options.allowLocalhost,
+  });
   const tokenStore = new TokenStore();
   const pendingLoginStore = new PendingLoginStore();
   if (options.command === "mcp" || options.command === "proxy") {
@@ -371,6 +432,7 @@ export async function runCli(argv = process.argv.slice(2)) {
       url,
       authUrl,
       legacyApiKey: options.legacyApiKey,
+      allowLocalhost: options.allowLocalhost,
       tokenStore,
       pendingLoginStore,
       noWait: options.noWait,
@@ -379,22 +441,13 @@ export async function runCli(argv = process.argv.slice(2)) {
     return;
   }
   if (options.command === "logout") {
-    const current = await tokenStore.load();
-    if (!options.dryRun && current?.refreshToken) {
-      const client = new DeviceAuthClient({ baseUrl: authUrl });
-      await client.revoke(current.refreshToken).catch(() => undefined);
-    }
-    if (!options.dryRun) {
-      await tokenStore.clear();
-      await pendingLoginStore.clear();
-    }
-    await clearPersistedApiKey({ home, dryRun: options.dryRun });
-    console.log(
-      options.dryRun
-        ? "演练模式：未清除本机凭据。"
-        : "已退出登录，并从系统凭据库清除令牌和旧版兼容凭据。",
-    );
-    return;
+    return logout({
+      home,
+      dryRun: options.dryRun,
+      authUrl,
+      tokenStore,
+      pendingLoginStore,
+    });
   }
   if (options.command === "status") {
     const result = await printStatus({
@@ -421,6 +474,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     url,
     authUrl,
     legacyApiKey: options.legacyApiKey,
+    allowLocalhost: options.allowLocalhost,
     tokenStore,
   });
 }

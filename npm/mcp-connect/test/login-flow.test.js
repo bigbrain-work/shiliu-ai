@@ -64,3 +64,20 @@ test("revokes an issued token if the operating-system store rejects it", async (
 
   assert.deepEqual(events, ["save", "revoke"]);
 });
+
+test("reports a revoke failure after MCP rejects the issued token", async () => {
+  await assert.rejects(
+    verifyAndPersistLogin({
+      response,
+      client: {
+        revoke: async () => {
+          throw new Error("revoke unavailable");
+        },
+      },
+      tokenStore: { save: async () => assert.fail("must not save") },
+      url: "https://example.test/mcp",
+      probe: async () => ({ ok: false, detail: "401 Unauthorized" }),
+    }),
+    /远端令牌撤销失败/u,
+  );
+});
