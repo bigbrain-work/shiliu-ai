@@ -43,13 +43,13 @@ npx -y @bigbrain-work/mcp-connect update
 
 ## Skill updates
 
-Before the first Shiliu AI MCP tool call in each user task, refresh only this Skill once:
+Before the first Shiliu AI MCP tool call in each user task, run the throttled refresh command once:
 
 ```bash
-npx -y skills update shiliu-ai-mcp -y
+shiliu skill refresh
 ```
 
-Do not repeat the update before every MCP tool call in the same task. If the targeted update fails because the network or `skills` CLI is unavailable, report it briefly and continue with the installed Skill plus live `tools/list`, unless the user explicitly requires the newest Skill.
+The CLI records the last attempt per project. It returns immediately for 24 hours, and when due it invokes only `npx -y skills update shiliu-ai-mcp -y`. Successful and failed attempts both enter the cooldown so a network outage does not slow every user task. Use `shiliu skill refresh --force` only when the user explicitly requests an immediate retry.
 
 For manual diagnostics:
 
@@ -58,6 +58,6 @@ For manual diagnostics:
 npx -y skills check
 ```
 
-Never run an unscoped `skills update` unless the user explicitly asks to update all installed Skills. A changed MCP tool or field is still discovered through live `tools/list`; it does not depend on the Skill refresh. Refreshed instructions take effect in the next task or after reloading when the client does not dynamically reload the current context.
+Do not run an unscoped `skills update`; the Shiliu refresh command owns the targeted update behavior. A changed MCP tool or field is still discovered through live `tools/list`; it does not depend on the Skill refresh. Refreshed instructions take effect in the next task or after reloading when the client does not dynamically reload the current context.
 
 Do not pass credentials as command-line flags because shell history and process listings can expose them. The default login displays a WeChat QR code, verifies the issued access token with `tools/list`, and stores the token set in the operating-system credential store. During the transition period, explicitly pass `--legacy-api-key` only when an existing API Key must be used.

@@ -101,19 +101,28 @@ test(
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [
-        path.resolve("bin/shiliu.js"),
-        "mcp",
-        "--url",
+        path.resolve("test-support/proxy-entry.js"),
         url,
-        "--allow-localhost",
       ],
       env: { ...process.env, [API_KEY_ENV]: "integration-secret" },
       stderr: "pipe",
     });
     const client = new Client({ name: "proxy-e2e-test", version: "1.0.0" });
+    let childStderr = "";
+    transport.stderr?.setEncoding("utf8");
+    transport.stderr?.on("data", (chunk) => {
+      childStderr += chunk;
+    });
 
     try {
-      await client.connect(transport);
+      try {
+        await client.connect(transport);
+      } catch (error) {
+        throw new Error(
+          `${error.message}${childStderr ? `; child stderr: ${childStderr.trim()}` : ""}`,
+          { cause: error },
+        );
+      }
       const tools = await client.listTools();
       assert.deepEqual(
         tools.tools.map((tool) => tool.name),

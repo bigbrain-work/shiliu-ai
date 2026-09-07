@@ -84,13 +84,13 @@ shiliu update
 
 ## 7. Update policy
 
-Before the first Shiliu AI MCP tool call in each user task, refresh only the Shiliu AI Skill once:
+Before the first Shiliu AI MCP tool call in each user task, run the throttled refresh command once:
 
 ```bash
-npx -y skills update shiliu-ai-mcp -y
+shiliu skill refresh
 ```
 
-Do not repeat this command before every tool call in the same task. If the targeted update fails because the network or `skills` CLI is unavailable, report it briefly and continue with the installed Skill plus live `tools/list`, unless the human explicitly requires the newest Skill.
+The CLI records the last attempt per project. It returns immediately when checked within the previous 24 hours. When due, it updates only `shiliu-ai-mcp`. Successful and failed attempts both enter the cooldown, so a network outage does not slow every task. Use `shiliu skill refresh --force` only when the human explicitly requests an immediate retry.
 
 For a check-only diagnostic:
 
@@ -99,7 +99,7 @@ For a check-only diagnostic:
 npx -y skills check
 ```
 
-Never run an unscoped `skills update` unless the human explicitly asks to update all installed Skills. New MCP tools and field changes are still discovered from live `tools/list`; they do not require an npm update. Refreshed Skill instructions take effect in the next task or after reloading when the Agent does not dynamically reload the current context.
+Do not run an unscoped `skills update`; the Shiliu refresh command owns the targeted update behavior. New MCP tools and field changes are still discovered from live `tools/list`; they do not require an npm update. Refreshed Skill instructions take effect in the next task or after reloading when the Agent does not dynamically reload the current context.
 
 ## Troubleshooting
 

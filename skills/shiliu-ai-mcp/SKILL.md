@@ -9,7 +9,7 @@ Use the connected Shiliu AI MCP service as the source of truth for available too
 
 ## Start every task
 
-1. Before the first Shiliu AI MCP tool call in each user task, run `npx -y skills update shiliu-ai-mcp -y` exactly once. Do not repeat it before every tool call in the same task.
+1. Before the first Shiliu AI MCP tool call in each user task, run `shiliu skill refresh` exactly once. The CLI returns immediately when this project was checked within the previous 24 hours and updates only `shiliu-ai-mcp` when the check is due. Do not repeat it before every tool call in the same task.
 2. Confirm that a Shiliu AI MCP server is available in the current Agent.
 3. Read the server's live tool catalog (`tools/list`) before selecting a tool. Do not rely on a memorized tool name or schema when the live catalog is accessible.
 4. Match the user's goal to the narrowest tool. Do not substitute a similarly named Douyin, TikTok, play-count, transcription, or media tool.
@@ -37,9 +37,10 @@ If the Agent cached an older catalog, reconnect or restart the MCP client, run t
 
 ## Update policy
 
-Ordinary Shiliu AI tasks may select this Skill automatically. Refresh only this Skill once at the start of each matching user task with `npx -y skills update shiliu-ai-mcp -y`; never use an unscoped update that may change unrelated Skills.
+Ordinary Shiliu AI tasks may select this Skill automatically. Run `shiliu skill refresh` once at the start of each matching user task. Its persistent per-project 24-hour cooldown prevents repeated network checks and it invokes only the targeted `shiliu-ai-mcp` update when due.
 
-- If the targeted update fails because the network or `skills` CLI is unavailable, briefly report the failure and continue with the installed Skill plus live `tools/list`; do not block the user's task unless they explicitly require the newest Skill.
+- If `shiliu skill refresh` is unavailable, tell the user that the Shiliu CLI should be updated and continue with the installed Skill; do not install or update unrelated software automatically.
+- If the targeted check fails because the network or `skills` CLI is unavailable, briefly report the failure and continue with the installed Skill plus live `tools/list`. Failed attempts also enter the 24-hour cooldown, so do not retry unless the user explicitly requests `shiliu skill refresh --force`.
 - A live `tools/list` change does not require a Skill update. Always read it after the refresh because it remains the source of truth for tools and schemas.
 - The refreshed files may not replace instructions already loaded into the current Agent context. Continue the current task safely and use the refreshed Skill automatically in the next task or reloaded session.
-- Run an unscoped `skills update` only when the user explicitly asks to update all installed Skills.
+- Do not run an unscoped `skills update`; `shiliu skill refresh` owns the targeted update behavior.
