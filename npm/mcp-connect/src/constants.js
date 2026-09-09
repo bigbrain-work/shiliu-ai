@@ -1,5 +1,10 @@
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const packageMetadata = require("../package.json");
+
 export const PACKAGE_NAME = "@bigbrain-work/mcp-connect";
-export const PACKAGE_VERSION = "1.3.1";
+export const PACKAGE_VERSION = packageMetadata.version;
 export const SERVER_NAME = "shiliu_mcp";
 export const MCP_URL = "https://api.bigbrain.work/shiliu/mcp";
 export const AUTH_URL = "https://api.bigbrain.work/shiliu/auth/device";
