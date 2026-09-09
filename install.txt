@@ -40,17 +40,19 @@ npm install -g @bigbrain-work/mcp-connect@latest --prefer-online
 
 ```bash
 # Generic Agent selection
-npx -y skills add bigbrain-work/shiliu-ai -y
+npx -y skills add https://bigbrain.work/shiliuAI -y
 
 # Codex
-npx -y skills add bigbrain-work/shiliu-ai -a codex -y
+npx -y skills add https://bigbrain.work/shiliuAI -a codex -y
 
 # Claude Code
-npx -y skills add bigbrain-work/shiliu-ai -a claude-code -y
+npx -y skills add https://bigbrain.work/shiliuAI -a claude-code -y
 
 # Cursor
-npx -y skills add bigbrain-work/shiliu-ai -a cursor -y
+npx -y skills add https://bigbrain.work/shiliuAI -a cursor -y
 ```
+
+The Skill is downloaded from Shiliu AI's standard Well-known Skills endpoint on `bigbrain.work`. This step does not require Git, GitHub access, or a local Git installation.
 
 ## 4. Authenticate
 
@@ -98,7 +100,7 @@ Before the first Shiliu AI MCP tool call in each user task, run the throttled re
 shiliu skill refresh
 ```
 
-The CLI records the last attempt per project. It returns immediately when checked within the previous 24 hours. When due, it updates only `shiliu-ai-mcp`. Successful and failed attempts both enter the cooldown, so a network outage does not slow every task. Use `shiliu skill refresh --force` only when the human explicitly requests an immediate retry.
+The CLI records the last attempt per project. It returns immediately when checked within the previous 24 hours. When due, it reinstalls only `shiliu-ai-mcp` from Shiliu AI's website for the locally detected Agents. Successful and failed attempts both enter the cooldown, so a network outage does not slow every task. Use `shiliu skill refresh --force` only when the human explicitly requests an immediate retry.
 
 For a check-only diagnostic:
 
