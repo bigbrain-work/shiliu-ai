@@ -17,6 +17,8 @@ npx -y skills add bigbrain-work/shiliu-ai -a codex -y
 
 将 `codex` 换成目标 Agent 名称，或按 `skills` CLI 的交互提示选择 Agent。
 
+安装 CLI 需要 Node.js 18+ 和 npm 8+。官方安装脚本会把过旧的 npm 自动升级到兼容 Node 18 的 `npm@9.9.4`；如果系统没有 Node/npm，应先从 Node.js 官方页面安装 Node.js 22 LTS，官方安装器会同时提供 npm。
+
 ## 配置 MCP
 
 CLI 默认启动微信扫码设备登录，换取短期访问令牌和可轮换刷新令牌。令牌保存在操作系统凭据库中，不会写入本仓库或 Agent 配置。

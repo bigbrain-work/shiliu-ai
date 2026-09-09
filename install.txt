@@ -8,11 +8,19 @@ Install the Shiliu AI CLI, install the Agent skill, authenticate with WeChat, co
 
 ## 1. Prerequisite
 
-Node.js 18 or newer is required. Verify it before installation:
+Node.js 18 or newer and npm 8 or newer are required. Verify them before installation:
 
 ```bash
 node --version
 npm --version
+```
+
+If either command is missing, install Node.js 22 LTS from `https://nodejs.org/en/download`; the official Node.js installer includes npm. Reopen the terminal and resume from this section. Do not attempt to infer a runtime installer from the Shiliu product homepage.
+
+The provided `install.sh` and `install.ps1` scripts automatically upgrade npm versions older than 8 to the Node-18-compatible `npm@9.9.4` release before installing the Shiliu CLI. For the direct npm alternative, upgrade first when needed:
+
+```bash
+npm install --global npm@9.9.4
 ```
 
 ## 2. Install CLI

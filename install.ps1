@@ -8,12 +8,25 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Stop-Install 'Node.js 18 or newer is required.'
 }
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-  Stop-Install 'npm is required.'
+  Stop-Install 'npm was not found. Install Node.js 22 LTS from https://nodejs.org/en/download (the official installer includes npm), reopen the terminal, and rerun this command.'
 }
 
 $nodeMajor = [int]((& node -p "Number(process.versions.node.split('.')[0])").Trim())
 if ($nodeMajor -lt 18) {
-  Stop-Install 'Node.js 18 or newer is required.'
+  Stop-Install 'Node.js 18 or newer is required. Install Node.js 22 LTS from https://nodejs.org/en/download and rerun this command.'
+}
+
+$npmVersion = ((& npm --version) | Out-String).Trim()
+$npmMajor = 0
+if (-not [int]::TryParse($npmVersion.Split('.')[0], [ref]$npmMajor)) {
+  Stop-Install "Unable to parse npm version: $npmVersion"
+}
+if ($npmMajor -lt 8) {
+  Write-Host "npm $npmVersion is too old; upgrading npm to the supported compatibility release..."
+  & npm install --global 'npm@9.9.4'
+  if ($LASTEXITCODE -ne 0) {
+    Stop-Install 'npm compatibility upgrade returned a non-zero exit code.'
+  }
 }
 
 Write-Host 'Installing @bigbrain-work/mcp-connect...'
