@@ -30,7 +30,7 @@ if ($npmMajor -lt 8) {
 }
 
 Write-Host 'Installing @bigbrain-work/mcp-connect...'
-& npm install --global '@bigbrain-work/mcp-connect'
+& npm install --global '@bigbrain-work/mcp-connect@latest' --prefer-online
 if ($LASTEXITCODE -ne 0) {
   Stop-Install 'npm installation returned a non-zero exit code.'
 }

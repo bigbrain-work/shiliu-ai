@@ -33,7 +33,7 @@ curl -fsSL https://bigbrain.work/shiliuAI/install.sh | sh
 irm https://bigbrain.work/shiliuAI/install.ps1 | iex
 
 # Direct npm alternative
-npm install -g @bigbrain-work/mcp-connect
+npm install -g @bigbrain-work/mcp-connect@latest --prefer-online
 ```
 
 ## 3. Install Skill

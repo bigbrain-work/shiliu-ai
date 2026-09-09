@@ -24,10 +24,10 @@ npx -y skills add bigbrain-work/shiliu-ai -a codex -y
 CLI 默认启动微信扫码设备登录，换取短期访问令牌和可轮换刷新令牌。令牌保存在操作系统凭据库中，不会写入本仓库或 Agent 配置。
 
 ```bash
-npx -y @bigbrain-work/mcp-connect login
-npx -y @bigbrain-work/mcp-connect install
-npx -y @bigbrain-work/mcp-connect status
-npx -y @bigbrain-work/mcp-connect tools
+npx -y @bigbrain-work/mcp-connect@latest login
+npx -y @bigbrain-work/mcp-connect@latest install
+npx -y @bigbrain-work/mcp-connect@latest status
+npx -y @bigbrain-work/mcp-connect@latest tools
 ```
 
 也可使用短命令名 `shiliu`。现有 `mcp-connect` 命令保持兼容。

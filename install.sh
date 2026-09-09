@@ -23,7 +23,7 @@ if [ "$npm_major" -lt 8 ]; then
 fi
 
 printf '%s\n' "Installing @bigbrain-work/mcp-connect..."
-npm install --global @bigbrain-work/mcp-connect
+npm install --global @bigbrain-work/mcp-connect@latest --prefer-online
 
 command -v shiliu >/dev/null 2>&1 || fail "The shiliu command is not on PATH. Open a new terminal and retry."
 shiliu --version
