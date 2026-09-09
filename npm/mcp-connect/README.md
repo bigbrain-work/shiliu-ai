@@ -24,7 +24,7 @@ npx -y @bigbrain-work/mcp-connect status
 # 显示服务实时返回的工具
 npx -y @bigbrain-work/mcp-connect tools
 
-# 每个项目最多每24小时检查一次石榴 Skill；仅有变化时定向更新
+# 每个项目最多每24小时从石榴官网定向刷新一次石榴 Skill
 shiliu skill refresh
 
 # 人工忽略冷却并立即重试

@@ -12,10 +12,10 @@
 可以直接使用：
 
 ```bash
-npx -y skills add bigbrain-work/shiliu-ai -a codex -y
+npx -y skills add https://bigbrain.work/shiliuAI -a codex -y
 ```
 
-将 `codex` 换成目标 Agent 名称，或按 `skills` CLI 的交互提示选择 Agent。
+将 `codex` 换成目标 Agent 名称，或按 `skills` CLI 的交互提示选择 Agent。Skill 从石榴 AI 网站的标准 Well-known Skills 入口下载，不依赖 Git、GitHub 或本机 Git 客户端。
 
 安装 CLI 需要 Node.js 18+ 和 npm 8+。官方安装脚本会把过旧的 npm 自动升级到兼容 Node 18 的 `npm@9.9.4`；如果系统没有 Node/npm，应先从 Node.js 官方页面安装 Node.js 22 LTS，官方安装器会同时提供 npm。
 
@@ -45,7 +45,7 @@ Agent 或其他非阻塞环境应运行 `shiliu login --no-wait --json`。二维
 ## 发布状态
 
 - 公共仓库：`bigbrain-work/shiliu-ai`
-- npm：`@bigbrain-work/mcp-connect@1.3.5`
+- npm：`@bigbrain-work/mcp-connect@1.3.6`
 - 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
 - Windows 安装问题与发布验收：`docs/windows-install-acceptance.md`
 

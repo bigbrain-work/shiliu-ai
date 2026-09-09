@@ -11,6 +11,7 @@ import path from "node:path";
 
 export const SKILL_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const SHILIU_SKILL_NAME = "shiliu-ai-mcp";
+export const SHILIU_SKILL_SOURCE = "https://bigbrain.work/shiliuAI";
 const STALE_LOCK_MS = 15 * 60 * 1000;
 
 function stateFile(home) {
@@ -90,9 +91,9 @@ export function runSkillUpdate({
         "/d",
         "/s",
         "/c",
-        `npx.cmd -y skills update ${SHILIU_SKILL_NAME} -y`,
+        `npx.cmd -y skills add ${SHILIU_SKILL_SOURCE} -y`,
       ]
-    : ["-y", "skills", "update", SHILIU_SKILL_NAME, "-y"];
+    : ["-y", "skills", "add", SHILIU_SKILL_SOURCE, "-y"];
   const result = spawnImpl(
     command,
     args,
@@ -109,7 +110,7 @@ export function runSkillUpdate({
     throw new Error(
       result.stderr?.trim() ||
         result.stdout?.trim() ||
-        `skills update 返回退出码 ${result.status}`,
+        `skills add 返回退出码 ${result.status}`,
     );
   }
 }

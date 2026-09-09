@@ -8,6 +8,7 @@ import {
   refreshShiliuSkill,
   runSkillUpdate,
   SKILL_REFRESH_INTERVAL_MS,
+  SHILIU_SKILL_SOURCE,
 } from "../src/skill-refresh.js";
 
 test("uses cmd.exe to launch npx.cmd on Windows", () => {
@@ -24,9 +25,36 @@ test("uses cmd.exe to launch npx.cmd on Windows", () => {
 
   assert.equal(invocation.command, "C:\\Windows\\System32\\cmd.exe");
   assert.deepEqual(invocation.args.slice(0, 3), ["/d", "/s", "/c"]);
-  assert.match(invocation.args[3], /^npx\.cmd -y skills update/u);
+  assert.equal(
+    invocation.args[3],
+    `npx.cmd -y skills add ${SHILIU_SKILL_SOURCE} -y`,
+  );
+  assert.doesNotMatch(invocation.args[3], /github|\bgit\b/iu);
   assert.equal(invocation.options.shell, false);
   assert.equal(invocation.options.cwd, "C:\\project");
+});
+
+test("uses the website skill source without Git on POSIX", () => {
+  let invocation;
+  runSkillUpdate({
+    cwd: "/project",
+    platform: "linux",
+    spawnImpl: (command, args, options) => {
+      invocation = { command, args, options };
+      return { status: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(invocation.command, "npx");
+  assert.deepEqual(invocation.args, [
+    "-y",
+    "skills",
+    "add",
+    SHILIU_SKILL_SOURCE,
+    "-y",
+  ]);
+  assert.doesNotMatch(invocation.args.join(" "), /github|\bgit\b/iu);
+  assert.equal(invocation.options.shell, false);
 });
 
 test("checks once per scope during the 24 hour interval", async () => {

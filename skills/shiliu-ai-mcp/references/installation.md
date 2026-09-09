@@ -49,7 +49,7 @@ Before the first Shiliu AI MCP tool call in each user task, run the throttled re
 shiliu skill refresh
 ```
 
-The CLI records the last attempt per project. It returns immediately for 24 hours, and when due it invokes only `npx -y skills update shiliu-ai-mcp -y`. Successful and failed attempts both enter the cooldown so a network outage does not slow every user task. Use `shiliu skill refresh --force` only when the user explicitly requests an immediate retry.
+The CLI records the last attempt per project. It returns immediately for 24 hours, and when due it invokes only `npx -y skills add https://bigbrain.work/shiliuAI -y`. The Skill is downloaded from Shiliu AI's Well-known Skills endpoint and does not require Git, GitHub access, or a local Git installation. Successful and failed attempts both enter the cooldown so a network outage does not slow every user task. Use `shiliu skill refresh --force` only when the user explicitly requests an immediate retry.
 
 For manual diagnostics:
 
