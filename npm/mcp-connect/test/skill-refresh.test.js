@@ -6,8 +6,28 @@ import test from "node:test";
 
 import {
   refreshShiliuSkill,
+  runSkillUpdate,
   SKILL_REFRESH_INTERVAL_MS,
 } from "../src/skill-refresh.js";
+
+test("uses cmd.exe to launch npx.cmd on Windows", () => {
+  let invocation;
+  runSkillUpdate({
+    cwd: "C:\\project",
+    platform: "win32",
+    env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+    spawnImpl: (command, args, options) => {
+      invocation = { command, args, options };
+      return { status: 0, stdout: "", stderr: "" };
+    },
+  });
+
+  assert.equal(invocation.command, "C:\\Windows\\System32\\cmd.exe");
+  assert.deepEqual(invocation.args.slice(0, 3), ["/d", "/s", "/c"]);
+  assert.match(invocation.args[3], /^npx\.cmd -y skills update/u);
+  assert.equal(invocation.options.shell, false);
+  assert.equal(invocation.options.cwd, "C:\\project");
+});
 
 test("checks once per scope during the 24 hour interval", async () => {
   const home = await mkdtemp(path.join(os.tmpdir(), "shiliu-skill-refresh-"));

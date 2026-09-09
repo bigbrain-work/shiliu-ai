@@ -51,7 +51,14 @@ export async function printUpdateStatus(options = {}) {
   const result = await checkForUpdates(options);
   if (result.updateAvailable) {
     console.log(`发现新版本：${result.current} → ${result.latest}`);
-    console.log(`更新命令：npm install -g ${PACKAGE_NAME}@latest`);
+    console.log(
+      `更新命令：npm install -g ${PACKAGE_NAME}@latest --prefer-online`,
+    );
+    if (process.platform === "win32") {
+      console.log(
+        "Windows 覆盖升级前请关闭正在使用石榴 MCP 的 Agent，避免原生凭据库文件被占用。",
+      );
+    }
   } else {
     console.log(`当前版本：${result.current}；npm latest：${result.latest}`);
   }
