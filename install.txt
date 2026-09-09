@@ -119,7 +119,7 @@ shiliu status
 
 If a newly installed global command is not found, open a new terminal and run `shiliu status` again.
 
-On Windows, an npm upgrade can print an `EPERM cleanup` warning when a running Agent still has the previous credential-store native module loaded. If npm exits successfully, verify `shiliu --version` and `shiliu status`; a correct version and healthy status mean the upgrade succeeded. If the version did not change, close running Agents that use Shiliu MCP and run the installer again.
+On Windows, an npm upgrade can report `EBUSY` or `EPERM` when a running Shiliu MCP process still has the previous credential-store native module loaded. The PowerShell installer stops only Node.js processes whose command line clearly identifies Shiliu MCP mode, then retries once; it does not stop the Agent itself. Verify `shiliu --version` and `shiliu status` afterward. If the retry still fails, close Agents that use Shiliu MCP and run the installer again.
 
 If `shiliu install --agent codex` reports that Codex failed to load its configuration, fix the field and line reported by Codex in the existing `~/.codex/config.toml`, then rerun the command. The Shiliu installer deliberately does not rewrite unrelated Codex settings.
 

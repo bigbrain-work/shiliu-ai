@@ -25,7 +25,7 @@
 | `shiliu logout` 后进程仍显示旧 API Key 登录 | 启动 Agent 的宿主进程注入了迁移期 `SHILIU_AI_API_KEY`，不是凭据库残留 | 验收设备登录时只在测试进程移除该环境变量；不把凭据写入命令或配置 | `status` 显示 `credentialSource=device`，Agent MCP 配置不含访问令牌 |
 | 客户机器没有 npm 或 npm 过旧 | 原流程默认 npm 可用 | 缺失时给出 Node.js 22 LTS 官方安装指引；过旧时自动升级兼容版本 | PowerShell 和 shell 安装脚本均检查 Node/npm，升级失败或升级后仍过旧时明确终止 |
 | npm 发布需要 Passkey 批准 | npm 账号的发布安全策略 | 发布者在浏览器批准；这不属于客户安装步骤 | 不向用户索要 OTP，不把发布凭据写入命令、日志或仓库 |
-| 覆盖升级时 npm 报原生凭据库 DLL 的 `EPERM cleanup` 警告 | 正在运行的 Agent/MCP 进程仍占用旧版本的 Windows 原生 DLL，Windows 不允许立即删除 | 安装退出码为 0 且新版本正确时不判为失败；关闭正在运行的 Agent 后再更新可避免占用 | 升级后必须以 `shiliu --version` 和 `shiliu status` 判断结果，不能只看到 warning 就认定失败 |
+| 覆盖升级时 npm 报原生凭据库 DLL 的 `EBUSY`/`EPERM` | 正在运行的 Agent/MCP 进程仍占用旧版本的 Windows 原生 DLL，Windows 不允许立即删除或替换 | 安装器只在 npm 因文件占用失败时停止命令行明确属于石榴 MCP 的 Node.js 进程并重试一次；新版 MCP 用短生命周期子进程读取凭据，避免长期持有 DLL | 在旧 MCP 仍运行时执行公开安装脚本也必须升级成功；升级后 `shiliu --version` 和 `shiliu status` 正常 |
 
 ## Windows 发布门槛
 
@@ -52,6 +52,6 @@
 8. 执行 `shiliu tools --json`，必须读取实时工具清单，而不是静态内置列表。
 9. 确认登录二维码临时文件已清理。
 
-Windows 覆盖升级如果出现 `EPERM cleanup`，先检查安装命令的退出码和 `shiliu --version`。版本已经更新且 `status` 正常时，警告仅表示旧临时目录暂时被进程占用；版本未更新时，应关闭所有正在使用石榴 MCP 的 Agent，再运行一次安装脚本。
+Windows 覆盖升级如果出现 `EBUSY` 或 `EPERM`，安装器会只停止命令行明确属于石榴 MCP 的 Node.js 进程并重试一次，不会停止 Agent 主进程。版本已经更新且 `status` 正常时，升级成功；如果重试仍失败，再关闭正在使用石榴 MCP 的 Agent 后重新运行安装脚本。
 
 真实扫码、凭据库和第三方客户端配置不能只靠单元测试代替；每个涉及这些路径的发布都应完成一次人工端到端验收。
