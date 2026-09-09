@@ -19,7 +19,7 @@ shiliu login --no-wait --json
 shiliu login poll --session <login_session_id> --wait --json
 ```
 
-Show `verification_uri` and `user_code` to the human. Run `poll_command` only after the human confirms that WeChat authorization is complete. Never expose or request the internal device code.
+The CLI has already generated the QR code. Display the local PNG at `qr_code_path` directly to the human and tell them to scan it with WeChat; do not ask the Agent to generate another QR code. Do not open `verification_uri` as an ordinary web page; it is only a fallback and the QR payload. Run `poll_command` only after the human confirms that WeChat authorization is complete. The CLI removes the temporary QR image after success, rejection, or expiry. Never expose or request the internal device code.
 
 ## Target one Agent
 

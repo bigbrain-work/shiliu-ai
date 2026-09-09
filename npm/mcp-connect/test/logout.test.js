@@ -14,6 +14,7 @@ test("revokes remotely before clearing local credentials", async () => {
       clear: async () => events.push("clear-token"),
     },
     pendingLoginStore: {
+      load: async () => null,
       clear: async () => events.push("clear-pending"),
     },
     clientFactory: () => ({
@@ -45,6 +46,7 @@ test("keeps all local credentials when remote revoke fails", async () => {
         clear: async () => events.push("clear-token"),
       },
       pendingLoginStore: {
+        load: async () => null,
         clear: async () => events.push("clear-pending"),
       },
       clientFactory: () => ({

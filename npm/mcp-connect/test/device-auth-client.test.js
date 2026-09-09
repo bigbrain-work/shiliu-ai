@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   DeviceAuthClient,
   DeviceAuthError,
+  createLoginQrCode,
   normalizeTokenResponse,
+  removeLoginQrCode,
   waitForDeviceAuthorization,
 } from "../src/device-auth-client.js";
 
@@ -40,6 +45,34 @@ test("posts device and refresh tokens in JSON bodies", async () => {
   assert.deepEqual(JSON.parse(requests[1].options.body), {
     refresh_token: "refresh-secret",
   });
+});
+
+test("creates and removes a temporary PNG QR code for Agent display", async () => {
+  const temporaryDirectory = await mkdtemp(
+    path.join(os.tmpdir(), "shiliu-qr-test-"),
+  );
+  try {
+    const qrCodePath = await createLoginQrCode(
+      "https://example.test/authorize?state=public-state",
+      "ABCD-2345",
+      { temporaryDirectory },
+    );
+    const content = await readFile(qrCodePath);
+    assert.deepEqual([...content.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.equal((await stat(qrCodePath)).isFile(), true);
+    assert.equal(await removeLoginQrCode(qrCodePath, { temporaryDirectory }), true);
+    await assert.rejects(() => stat(qrCodePath), /ENOENT/u);
+
+    const unrelatedPath = path.join(temporaryDirectory, "unrelated.png");
+    await writeFile(unrelatedPath, "keep");
+    assert.equal(
+      await removeLoginQrCode(unrelatedPath, { temporaryDirectory }),
+      false,
+    );
+    assert.equal((await stat(unrelatedPath)).isFile(), true);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 });
 
 test("polls through authorization_pending without losing the device code", async () => {

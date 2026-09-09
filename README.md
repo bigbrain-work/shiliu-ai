@@ -30,6 +30,8 @@ npx -y @bigbrain-work/mcp-connect tools
 
 也可使用短命令名 `shiliu`。现有 `mcp-connect` 命令保持兼容。
 
+Agent 或其他非阻塞环境应运行 `shiliu login --no-wait --json`。二维码已经由 CLI 生成，Agent 只需把返回的 `qr_code_path` 本地 PNG 直接展示给用户使用微信扫码，不需要自行把链接转成二维码。`verification_uri` 是二维码载荷和排障备用地址，不应作为普通网页直接打开。授权结束或过期后，CLI 会清理临时二维码图片。
+
 ## 安全原则
 
 - 不在命令参数、仓库、日志或 Agent 配置中保存真实凭据。
@@ -41,7 +43,7 @@ npx -y @bigbrain-work/mcp-connect tools
 ## 发布状态
 
 - 公共仓库：`bigbrain-work/shiliu-ai`
-- npm：`@bigbrain-work/mcp-connect@1.3.0`
+- npm：`@bigbrain-work/mcp-connect@1.3.2`
 - 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
 
 ## 更新边界
