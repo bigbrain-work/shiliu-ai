@@ -7,10 +7,20 @@ fail() {
 }
 
 command -v node >/dev/null 2>&1 || fail "Node.js 18 or newer is required."
-command -v npm >/dev/null 2>&1 || fail "npm is required."
+command -v npm >/dev/null 2>&1 || fail "npm was not found. Install Node.js 22 LTS from https://nodejs.org/en/download (the official installer includes npm), reopen the terminal, and rerun this command."
 
 node_major=$(node -p "Number(process.versions.node.split('.')[0])")
-[ "$node_major" -ge 18 ] || fail "Node.js 18 or newer is required."
+[ "$node_major" -ge 18 ] || fail "Node.js 18 or newer is required. Install Node.js 22 LTS from https://nodejs.org/en/download and rerun this command."
+
+npm_version=$(npm --version)
+npm_major=${npm_version%%.*}
+case "$npm_major" in
+  ''|*[!0-9]*) fail "Unable to parse npm version: $npm_version" ;;
+esac
+if [ "$npm_major" -lt 8 ]; then
+  printf '%s\n' "npm $npm_version is too old; upgrading npm to the supported compatibility release..."
+  npm install --global npm@9.9.4 || fail "npm compatibility upgrade returned a non-zero exit code."
+fi
 
 printf '%s\n' "Installing @bigbrain-work/mcp-connect..."
 npm install --global @bigbrain-work/mcp-connect
