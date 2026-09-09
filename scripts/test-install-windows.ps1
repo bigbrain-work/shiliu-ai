@@ -85,6 +85,35 @@ echo upgraded>"%SHILIU_INSTALL_TEST_STATE%"
 exit /b 0
 '@
 
+$npmBusyOnce = @'
+@echo off
+if "%~1"=="--version" (
+  echo 11.5.1
+  exit /b 0
+)
+echo %*>>"%SHILIU_INSTALL_TEST_LOG%"
+if not exist "%SHILIU_INSTALL_TEST_STATE%" (
+  echo attempted>"%SHILIU_INSTALL_TEST_STATE%"
+  echo npm error code EBUSY 1>&2
+  exit /b 1
+)
+exit /b 0
+'@
+
+$npmEpermWarningOnce = @'
+@echo off
+if "%~1"=="--version" (
+  echo 11.5.1
+  exit /b 0
+)
+echo %*>>"%SHILIU_INSTALL_TEST_LOG%"
+if not exist "%SHILIU_INSTALL_TEST_STATE%" (
+  echo attempted>"%SHILIU_INSTALL_TEST_STATE%"
+  echo npm warn cleanup EPERM
+)
+exit /b 0
+'@
+
 try {
   [void](New-Item -ItemType Directory -Path $sandbox -Force)
 
@@ -107,6 +136,25 @@ try {
   $currentNpmLog = Get-Content -LiteralPath $currentNpm.LogPath -Raw
   Assert-True ($currentNpmLog -notmatch 'npm@9\.9\.4') 'Current npm must not be downgraded to the compatibility release.'
   Assert-True ($currentNpmLog -match '@bigbrain-work/mcp-connect@latest --prefer-online') 'Current npm path must install the online latest CLI.'
+
+  $busyNpm = Invoke-InstallerCase 'busy-npm' $node22 $npmBusyOnce $true
+  Assert-True ($busyNpm.ExitCode -eq 0) "Busy npm retry path failed: $($busyNpm.Output)"
+  $busyNpmLog = Get-Content -LiteralPath $busyNpm.LogPath -Raw
+  $installAttempts = [regex]::Matches(
+    $busyNpmLog,
+    '@bigbrain-work/mcp-connect@latest --prefer-online'
+  ).Count
+  Assert-True ($installAttempts -eq 2) 'EBUSY must trigger exactly one installation retry.'
+  Assert-True ($busyNpm.Output -match 'Retrying the Shiliu AI CLI installation once') 'EBUSY retry must be visible to the user.'
+
+  $warningNpm = Invoke-InstallerCase 'eperm-warning' $node22 $npmEpermWarningOnce $true
+  Assert-True ($warningNpm.ExitCode -eq 0) "EPERM warning retry path failed: $($warningNpm.Output)"
+  $warningNpmLog = Get-Content -LiteralPath $warningNpm.LogPath -Raw
+  $warningAttempts = [regex]::Matches(
+    $warningNpmLog,
+    '@bigbrain-work/mcp-connect@latest --prefer-online'
+  ).Count
+  Assert-True ($warningAttempts -eq 2) 'A successful npm install with an EPERM cleanup warning must still retry once after releasing the lock.'
 
   Write-Output 'Windows installer prerequisite tests passed.'
 }

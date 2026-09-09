@@ -4,6 +4,35 @@ function Stop-Install([string] $Message) {
   throw "Shiliu AI CLI installation failed: $Message"
 }
 
+function Install-ShiliuPackage {
+  $output = @(& npm install --global '@bigbrain-work/mcp-connect@latest' --prefer-online 2>&1)
+  $exitCode = $LASTEXITCODE
+  $output | ForEach-Object { Write-Host $_ }
+  return @{
+    ExitCode = $exitCode
+    Output = ($output | Out-String)
+  }
+}
+
+function Stop-RunningShiliuMcp {
+  $processes = @(
+    Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+      Where-Object {
+        $_.CommandLine -match '(?i)@bigbrain-work[\\/]mcp-connect' -and
+        $_.CommandLine.TrimEnd() -match '(?i)\smcp$'
+      }
+  )
+  if ($processes.Count -eq 0) {
+    return
+  }
+  Write-Host "Temporarily stopping $($processes.Count) running Shiliu MCP process(es) so Windows can replace the credential-store module..."
+  $processes |
+    Sort-Object ProcessId -Descending |
+    ForEach-Object {
+      Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
   Stop-Install 'Node.js 18 or newer is required.'
 }
@@ -38,8 +67,14 @@ if ($npmMajor -lt 8) {
 }
 
 Write-Host 'Installing @bigbrain-work/mcp-connect...'
-& npm install --global '@bigbrain-work/mcp-connect@latest' --prefer-online
-if ($LASTEXITCODE -ne 0) {
+$install = Install-ShiliuPackage
+if ($install.Output -match '(?i)\b(EBUSY|EPERM)\b') {
+  Stop-RunningShiliuMcp
+  Start-Sleep -Seconds 1
+  Write-Host 'Retrying the Shiliu AI CLI installation once after releasing Windows file locks...'
+  $install = Install-ShiliuPackage
+}
+if ($install.ExitCode -ne 0) {
   Stop-Install 'npm installation returned a non-zero exit code.'
 }
 

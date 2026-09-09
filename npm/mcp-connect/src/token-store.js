@@ -3,6 +3,12 @@ import {
   KEYRING_SERVICE,
   PENDING_KEYRING_ACCOUNT,
 } from "./constants.js";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const KEYRING_WORKER_PATH = fileURLToPath(
+  new URL("./keyring-worker.js", import.meta.url),
+);
 
 function validateTokenSet(value) {
   if (
@@ -17,7 +23,72 @@ function validateTokenSet(value) {
   return value;
 }
 
-async function createSystemEntry(account) {
+export function runKeyringWorker(request, { spawnImpl = spawn } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawnImpl(process.execPath, [KEYRING_WORKER_PATH], {
+      windowsHide: true,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `凭据库子进程返回退出码 ${code}`));
+        return;
+      }
+      try {
+        resolve(JSON.parse(stdout));
+      } catch {
+        reject(new Error("凭据库子进程返回了无效响应"));
+      }
+    });
+    child.stdin.end(JSON.stringify(request));
+  });
+}
+
+export async function createSystemEntry(
+  account,
+  {
+    platform = process.platform,
+    runWorker = runKeyringWorker,
+  } = {},
+) {
+  if (platform === "win32") {
+    return {
+      async setPassword(password) {
+        await runWorker({
+          operation: "set",
+          service: KEYRING_SERVICE,
+          account,
+          password,
+        });
+      },
+      async getPassword() {
+        const result = await runWorker({
+          operation: "get",
+          service: KEYRING_SERVICE,
+          account,
+        });
+        return result.value;
+      },
+      async deletePassword() {
+        await runWorker({
+          operation: "delete",
+          service: KEYRING_SERVICE,
+          account,
+        });
+      },
+    };
+  }
   let module;
   try {
     module = await import("@napi-rs/keyring");
