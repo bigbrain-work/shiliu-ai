@@ -77,11 +77,25 @@ async function writeState(home, state) {
   });
 }
 
-function defaultRunUpdate({ cwd, platform = process.platform }) {
-  const command = platform === "win32" ? "npx.cmd" : "npx";
-  const result = spawnSync(
+export function runSkillUpdate({
+  cwd,
+  platform = process.platform,
+  env = process.env,
+  spawnImpl = spawnSync,
+}) {
+  const isWindows = platform === "win32";
+  const command = isWindows ? env.ComSpec || "cmd.exe" : "npx";
+  const args = isWindows
+    ? [
+        "/d",
+        "/s",
+        "/c",
+        `npx.cmd -y skills update ${SHILIU_SKILL_NAME} -y`,
+      ]
+    : ["-y", "skills", "update", SHILIU_SKILL_NAME, "-y"];
+  const result = spawnImpl(
     command,
-    ["-y", "skills", "update", SHILIU_SKILL_NAME, "-y"],
+    args,
     {
       cwd,
       encoding: "utf8",
@@ -111,7 +125,7 @@ export async function refreshShiliuSkill({
   now = Date.now(),
   force = false,
   intervalMs = SKILL_REFRESH_INTERVAL_MS,
-  runUpdate = defaultRunUpdate,
+  runUpdate = runSkillUpdate,
 } = {}) {
   if (!home) throw new Error("缺少用户目录，无法记录 Skill 检查时间");
   const scope = path.resolve(cwd);

@@ -31,3 +31,67 @@ jobs:
 
       - name: Discover public skills
         run: npx -y skills add . --list -a codex
+
+  windows-validate:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: npm/mcp-connect/package-lock.json
+
+      - name: Parse the Windows installer
+        run: |
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path -LiteralPath ./install.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.ToString() }
+            exit 1
+          }
+
+      - name: Test Windows prerequisite branches
+        run: ./scripts/test-install-windows.ps1
+
+      - name: Run the public Windows installer
+        run: ./install.ps1
+
+      - name: Install CLI dependencies
+        run: npm ci --prefix npm/mcp-connect
+
+      - name: Test CLI on Windows
+        run: npm test --prefix npm/mcp-connect
+
+      - name: Verify package contents
+        run: npm run pack:check --prefix npm/mcp-connect
+
+      - name: Install and smoke-test the branch package
+        working-directory: npm/mcp-connect
+        run: |
+          $package = Get-Content -LiteralPath ./package.json -Raw | ConvertFrom-Json
+          $tarball = (npm pack --silent).Trim()
+          npm install --global (Join-Path $PWD $tarball)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $actualVersion = (shiliu --version).Trim()
+          if ($actualVersion -ne $package.version) {
+            throw "CLI version mismatch: expected $($package.version), got $actualVersion"
+          }
+
+          shiliu login --dry-run --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          shiliu install --agent codex --dry-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Discover public skills on Windows
+        run: npx -y skills add . --list -a codex

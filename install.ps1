@@ -27,6 +27,14 @@ if ($npmMajor -lt 8) {
   if ($LASTEXITCODE -ne 0) {
     Stop-Install 'npm compatibility upgrade returned a non-zero exit code.'
   }
+  $npmVersion = ((& npm --version) | Out-String).Trim()
+  $npmMajor = 0
+  if (
+    -not [int]::TryParse($npmVersion.Split('.')[0], [ref]$npmMajor) -or
+    $npmMajor -lt 8
+  ) {
+    Stop-Install "npm upgrade did not produce a supported version: $npmVersion"
+  }
 }
 
 Write-Host 'Installing @bigbrain-work/mcp-connect...'
