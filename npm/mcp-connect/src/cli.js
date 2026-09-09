@@ -22,6 +22,8 @@ import { detectInstalledAgents } from "./detection.js";
 import {
   DeviceAuthClient,
   DeviceAuthError,
+  createLoginQrCode,
+  removeLoginQrCode,
   renderQrCode,
   waitForDeviceAuthorization,
 } from "./device-auth-client.js";
@@ -110,7 +112,7 @@ async function legacyLogin({ home, dryRun, url }) {
   );
 }
 
-function buildPendingLogin(start, authUrl, allowLocalhost) {
+function buildPendingLogin(start, authUrl, allowLocalhost, qrCodePath) {
   return {
     sessionId: normalizeDeviceUserCode(start.user_code),
     deviceCode: start.device_code,
@@ -118,10 +120,14 @@ function buildPendingLogin(start, authUrl, allowLocalhost) {
     interval: Number(start.interval) || 5,
     authUrl,
     allowLocalhost,
+    qrCodePath,
   };
 }
 
-export function buildLoginInstructions(start, { allowLocalhost = false } = {}) {
+export function buildLoginInstructions(
+  start,
+  { allowLocalhost = false, qrCodePath } = {},
+) {
   const sessionId = normalizeDeviceUserCode(start.user_code);
   const localhostOption = allowLocalhost ? " --allow-localhost" : "";
   return {
@@ -132,10 +138,12 @@ export function buildLoginInstructions(start, { allowLocalhost = false } = {}) {
       start.verification_uri_complete ||
       start.qr_code_uri ||
       start.verification_uri,
+    qr_code_path: qrCodePath,
+    qr_code_mime_type: "image/png",
     expires_in: Number(start.expires_in),
     poll_command: `shiliu login poll --session ${sessionId} --wait --json${localhostOption}`,
     next_action_hint:
-      "请让用户打开 verification_uri 完成微信授权；用户确认后运行 poll_command。",
+      "二维码已由石榴 CLI 生成。请直接向用户展示 qr_code_path 指向的图片，让用户使用微信扫码授权；不要自行生成二维码，也不要把 verification_uri 当作普通网页打开。用户确认后运行 poll_command。",
   };
 }
 
@@ -151,20 +159,39 @@ async function startPendingDeviceLogin({
 }) {
   const client = new DeviceAuthClient({ baseUrl: authUrl });
   const start = await client.start();
-  await pendingLoginStore.save(
-    buildPendingLogin(start, authUrl, allowLocalhost),
-  );
-  const instructions = buildLoginInstructions(start, { allowLocalhost });
+  const sessionId = normalizeDeviceUserCode(start.user_code);
+  const qrCodeValue =
+    start.qr_code_uri ||
+    start.verification_uri_complete ||
+    start.verification_uri;
+  const qrCodePath = await createLoginQrCode(qrCodeValue, sessionId);
+  try {
+    await pendingLoginStore.save(
+      buildPendingLogin(start, authUrl, allowLocalhost, qrCodePath),
+    );
+  } catch (error) {
+    await removeLoginQrCode(qrCodePath);
+    throw error;
+  }
+  const instructions = buildLoginInstructions(start, {
+    allowLocalhost,
+    qrCodePath,
+  });
   if (json) {
     printJson(instructions);
     return;
   }
   console.log(`请使用微信扫描二维码完成登录（验证码 ${start.user_code}）：`);
-  console.log(await renderQrCode(start.qr_code_uri));
-  console.log(`也可以打开：${instructions.verification_uri}`);
+  console.log(await renderQrCode(qrCodeValue));
+  console.log(`二维码图片：${instructions.qr_code_path}`);
   console.log(
     `完成后运行：${instructions.poll_command.replace(" --json", "")}`,
   );
+}
+
+async function clearPendingLogin(pendingLoginStore, pending) {
+  await pendingLoginStore.clear();
+  await removeLoginQrCode(pending?.qrCodePath);
 }
 
 async function pollPendingDeviceLogin({
@@ -181,7 +208,7 @@ async function pollPendingDeviceLogin({
     throw new Error("未找到对应的待处理登录会话，请重新运行 shiliu login");
   }
   if (pending.expiresAt <= Date.now()) {
-    await pendingLoginStore.clear();
+    await clearPendingLogin(pendingLoginStore, pending);
     throw new Error("登录会话已过期，请重新运行 shiliu login");
   }
 
@@ -222,8 +249,13 @@ async function pollPendingDeviceLogin({
       else console.log("登录尚未完成，请授权后重新运行并加上 --wait。");
       return;
     }
-    if (error instanceof DeviceAuthError && error.code === "expired_token") {
-      await pendingLoginStore.clear();
+    if (
+      error instanceof DeviceAuthError &&
+      ["expired_token", "access_denied", "authorization_declined"].includes(
+        error.code,
+      )
+    ) {
+      await clearPendingLogin(pendingLoginStore, pending);
     }
     throw error;
   }
@@ -234,7 +266,7 @@ async function pollPendingDeviceLogin({
     tokenStore,
     url,
   });
-  await pendingLoginStore.clear();
+  await clearPendingLogin(pendingLoginStore, pending);
   const result = {
     status: "success",
     message: "登录成功",
@@ -341,7 +373,8 @@ export async function logout({
   }
 
   await tokenStore.clear();
-  await pendingLoginStore.clear();
+  const pending = await pendingLoginStore.load();
+  await clearPendingLogin(pendingLoginStore, pending);
   await clearLegacyApiKey({ home, dryRun: false });
   console.log("已退出登录，并从系统凭据库清除令牌和旧版兼容凭据。");
 }

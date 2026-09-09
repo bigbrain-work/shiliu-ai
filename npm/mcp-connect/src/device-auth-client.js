@@ -1,3 +1,7 @@
+import { chmod, mkdir, readdir, stat, unlink } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import QRCode from "qrcode";
 
 import { AUTH_URL } from "./constants.js";
@@ -95,6 +99,77 @@ export async function renderQrCode(value) {
     small: true,
     errorCorrectionLevel: "M",
   });
+}
+
+const QR_CODE_DIRECTORY = "shiliu-ai";
+const QR_CODE_PREFIX = "shiliu-login-";
+const QR_CODE_MAX_AGE_MS = 15 * 60 * 1000;
+
+function qrCodeDirectory(temporaryDirectory = os.tmpdir()) {
+  return path.resolve(temporaryDirectory, QR_CODE_DIRECTORY);
+}
+
+function isManagedQrCodePath(filePath, temporaryDirectory = os.tmpdir()) {
+  if (typeof filePath !== "string" || filePath.length === 0) return false;
+  const resolvedPath = path.resolve(filePath);
+  return (
+    path.dirname(resolvedPath) === qrCodeDirectory(temporaryDirectory) &&
+    path.basename(resolvedPath).startsWith(QR_CODE_PREFIX) &&
+    path.extname(resolvedPath).toLowerCase() === ".png"
+  );
+}
+
+async function removeStaleQrCodes(directory, now) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  await Promise.all(
+    entries
+      .filter(
+        (entry) =>
+          entry.isFile() &&
+          entry.name.startsWith(QR_CODE_PREFIX) &&
+          entry.name.endsWith(".png"),
+      )
+      .map(async (entry) => {
+        const filePath = path.join(directory, entry.name);
+        const metadata = await stat(filePath);
+        if (now() - metadata.mtimeMs > QR_CODE_MAX_AGE_MS) {
+          await unlink(filePath).catch(() => {});
+        }
+      }),
+  );
+}
+
+export async function createLoginQrCode(
+  value,
+  sessionId,
+  { temporaryDirectory = os.tmpdir(), now = Date.now } = {},
+) {
+  if (!/^[A-Z0-9-]{4,64}$/u.test(sessionId)) {
+    throw new Error("登录会话编号格式无效");
+  }
+  const directory = qrCodeDirectory(temporaryDirectory);
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  await removeStaleQrCodes(directory, now);
+  const filePath = path.join(directory, `${QR_CODE_PREFIX}${sessionId}.png`);
+  await QRCode.toFile(filePath, value, {
+    type: "png",
+    errorCorrectionLevel: "M",
+    margin: 2,
+    width: 480,
+  });
+  await chmod(filePath, 0o600).catch(() => {});
+  return path.resolve(filePath);
+}
+
+export async function removeLoginQrCode(
+  filePath,
+  { temporaryDirectory = os.tmpdir() } = {},
+) {
+  if (!isManagedQrCodePath(filePath, temporaryDirectory)) return false;
+  await unlink(filePath).catch((error) => {
+    if (error?.code !== "ENOENT") throw error;
+  });
+  return true;
 }
 
 function defaultSleep(milliseconds) {

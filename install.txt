@@ -58,7 +58,7 @@ For an Agent or nonblocking environment:
 shiliu login --no-wait --json
 ```
 
-Read `verification_uri`, `user_code`, `poll_command`, and `next_action_hint`. Show the link and code to the human. After the human confirms authorization, run the exact returned `poll_command`. The JSON response never contains the internal device code, access token, or refresh token.
+Read `qr_code_path`, `qr_code_mime_type`, `user_code`, `poll_command`, and `next_action_hint`. The CLI has already generated the QR code: display the local PNG at `qr_code_path` directly to the human and tell them to scan it with WeChat. Do not ask the Agent to generate another QR code. Do not open `verification_uri` as an ordinary web page; it is retained only as a troubleshooting fallback and as the QR payload. After the human confirms authorization, run the exact returned `poll_command`. The QR image is temporary and is removed after success, rejection, or expiry. The JSON response never contains the internal device code, access token, or refresh token.
 
 ## 5. Configure the Agent
 

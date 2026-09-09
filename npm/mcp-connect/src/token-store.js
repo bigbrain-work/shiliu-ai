@@ -84,6 +84,7 @@ function validatePendingLogin(value) {
     typeof value.expiresAt !== "number" ||
     typeof value.interval !== "number" ||
     typeof value.authUrl !== "string" ||
+    (value.qrCodePath !== undefined && typeof value.qrCodePath !== "string") ||
     (value.allowLocalhost !== undefined &&
       typeof value.allowLocalhost !== "boolean")
   ) {
