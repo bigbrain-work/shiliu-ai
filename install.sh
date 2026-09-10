@@ -6,11 +6,35 @@ fail() {
   exit 1
 }
 
-command -v node >/dev/null 2>&1 || fail "Node.js 18 or newer is required."
-command -v npm >/dev/null 2>&1 || fail "npm was not found. Install Node.js 22 LTS from https://nodejs.org/en/download (the official installer includes npm), reopen the terminal, and rerun this command."
+require_minimum_version() {
+  actual_version=$1
+  minimum_major=$2
+  minimum_minor=$3
+  minimum_patch=$4
+  product_name=$5
 
-node_major=$(node -p "Number(process.versions.node.split('.')[0])") || fail "Unable to read the Node.js version."
-[ "$node_major" -ge 18 ] || fail "Node.js 18 or newer is required. Install Node.js 22 LTS from https://nodejs.org/en/download and rerun this command."
+  version_core=${actual_version#v}
+  version_core=${version_core%%[-+]*}
+  previous_ifs=$IFS
+  IFS=.
+  set -- $version_core
+  IFS=$previous_ifs
+  [ "$#" -eq 3 ] || fail "Unable to parse $product_name version: $actual_version"
+  case "$1:$2:$3" in
+    *[!0-9:]*) fail "Unable to parse $product_name version: $actual_version" ;;
+  esac
+  if [ "$1" -lt "$minimum_major" ] ||
+    { [ "$1" -eq "$minimum_major" ] && [ "$2" -lt "$minimum_minor" ]; } ||
+    { [ "$1" -eq "$minimum_major" ] && [ "$2" -eq "$minimum_minor" ] && [ "$3" -lt "$minimum_patch" ]; }; then
+    fail "$product_name $minimum_major.$minimum_minor.$minimum_patch or newer is required, but $actual_version was found."
+  fi
+}
+
+command -v node >/dev/null 2>&1 || fail "Node.js 18.14.1 or newer is required for the CLI."
+command -v npm >/dev/null 2>&1 || fail "npm was not found. Install Node.js 24 LTS from https://nodejs.org/en/download (the official installer includes npm), reopen the terminal, and rerun this command."
+
+node_version=$(node -p "process.versions.node") || fail "Unable to read the Node.js version."
+require_minimum_version "$node_version" 18 14 1 "Node.js"
 
 npm_version=$(npm --version) || fail "Unable to read the npm version."
 npm_major=${npm_version%%.*}
@@ -33,6 +57,7 @@ npm install --global @bigbrain-work/mcp-connect@latest --prefer-online || fail "
 
 command -v shiliu >/dev/null 2>&1 || fail "The shiliu command is not on PATH. Open a new terminal and retry."
 shiliu_version=$(shiliu --version) || fail "shiliu --version returned a non-zero exit code. CLI installation could not be verified."
+require_minimum_version "$shiliu_version" 1 3 7 "Shiliu AI CLI"
 
 printf '%s\n' "CLI installed. Version: $shiliu_version"
 printf '%s\n' "Continue with Step 3 (Install Skill) in https://bigbrain.work/shiliuAI/install.txt"

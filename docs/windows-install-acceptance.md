@@ -6,11 +6,11 @@
 
 - Windows 10 或 Windows 11
 - PowerShell 5.1 或 PowerShell 7
-- Node.js 18 及以上，推荐 Node.js 22 LTS
+- CLI 单独运行最低 Node.js 18.14.1；完整安装流程最低 Node.js 22.20.0，推荐 Node.js 24 LTS
 - npm 8 及以上
 - Codex、Claude Code 或 Cursor；也可以输出供其他 Agent 使用的标准 stdio MCP 配置
 
-机器没有 Node.js 或 npm 时，安装指南必须明确引导用户安装 Node.js 22 LTS 官方安装包，并说明安装包自带 npm。npm 版本低于 8 时，安装脚本自动升级到兼容 Node.js 18 的 `npm@9.9.4`，升级后必须重新读取并校验版本。
+机器没有 Node.js 或 npm 时，安装指南必须明确引导用户安装 Node.js 24 LTS 官方安装包，并说明安装包自带 npm。CLI 安装器拒绝低于 18.14.1 的 Node.js；完整安装指南在运行当前 `skills` CLI 前要求 22.20.0 以上。npm 版本低于 8 时，安装脚本自动升级到 `npm@9.9.4`，升级后必须重新读取并校验版本。
 
 ## 2026-09-09 实机问题记录
 
@@ -23,7 +23,7 @@
 | Windows 自动识别 Agent 可能遇到同类 `.cmd` 启动失败 | `codex`、`claude` 等全局 npm 命令也是 `.cmd` shim | Windows 命令探测统一通过 `%ComSpec%`，并先限制命令名字符集 | Windows 单测覆盖正常探测和命令注入拒绝 |
 | 已存在的 Codex 配置错误会让 `shiliu install --agent codex` 失败 | Codex 在读取自身 `config.toml` 时先校验全部字段；本机旧值 `service_tier = "default"` 已不被当前客户端接受 | 修正本机已有无效字段；石榴安装器不擅自修改与 MCP 无关的用户配置 | 安装失败时保留原始 Codex 错误；修复用户配置后可重复执行安装 |
 | `shiliu logout` 后进程仍显示旧 API Key 登录 | 启动 Agent 的宿主进程注入了迁移期 `SHILIU_AI_API_KEY`，不是凭据库残留 | 验收设备登录时只在测试进程移除该环境变量；不把凭据写入命令或配置 | `status` 显示 `credentialSource=device`，Agent MCP 配置不含访问令牌 |
-| 客户机器没有 npm 或 npm 过旧 | 原流程默认 npm 可用 | 缺失时给出 Node.js 22 LTS 官方安装指引；过旧时自动升级兼容版本 | PowerShell 和 shell 安装脚本均检查 Node/npm，升级失败或升级后仍过旧时明确终止 |
+| 客户机器没有 npm、Node/npm 过旧 | 原流程默认运行环境可用 | 缺失时给出 Node.js 24 LTS 官方安装指引；CLI 安装器校验 Node.js 18.14.1+，完整流程校验 22.20.0+；npm 过旧时自动升级兼容版本 | PowerShell 和 shell 安装脚本均检查 Node/npm，升级失败或升级后仍过旧时明确终止 |
 | npm 发布需要 Passkey 批准 | npm 账号的发布安全策略 | 发布者在浏览器批准；这不属于客户安装步骤 | 不向用户索要 OTP，不把发布凭据写入命令、日志或仓库 |
 | 覆盖升级时 npm 报原生凭据库 DLL 的 `EBUSY`/`EPERM` | 正在运行的 Agent/MCP 进程仍占用旧版本的 Windows 原生 DLL，Windows 不允许立即删除或替换 | 安装器只在 npm 因文件占用失败时停止命令行明确属于石榴 MCP 的 Node.js 进程并重试一次；新版 MCP 用短生命周期子进程读取凭据，避免长期持有 DLL | 在旧 MCP 仍运行时执行公开安装脚本也必须升级成功；升级后 `shiliu --version` 和 `shiliu status` 正常 |
 | npm 成功输出中带有 `EPERM` 清理警告 | 旧脚本只匹配输出文本，可能把成功安装误判为文件锁失败 | 只有 npm 退出码非零且输出包含 `EBUSY`/`EPERM` 才释放文件锁并重试 | 成功且带警告时只执行一次安装，不停止任何 MCP 进程 |

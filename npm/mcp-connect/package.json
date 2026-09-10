@@ -1,6 +1,6 @@
 {
   "name": "@bigbrain-work/mcp-connect",
-  "version": "1.3.7",
+  "version": "1.3.8",
   "description": "石榴 AI 官方 CLI：登录、配置 Agent、检查 MCP 状态并桥接远程工具。",
   "type": "module",
   "bin": {
@@ -18,7 +18,7 @@
     "pack:check": "npm pack --dry-run"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=18.14.1"
   },
   "keywords": [
     "mcp",
@@ -29,6 +29,11 @@
   ],
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bigbrain-work/shiliu-ai.git",
+    "directory": "npm/mcp-connect"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",

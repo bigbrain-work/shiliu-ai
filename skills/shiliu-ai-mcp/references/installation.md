@@ -22,7 +22,7 @@ shiliu tools
 
 - A missing executable is a runtime or PATH issue. Preserve the current PATH when resolving it. In Windows PowerShell, use `shiliu.cmd` when execution policy blocks the PowerShell command shim.
 - CLI authentication and live tool discovery verify only the CLI connection. Inspect the current Agent's MCP connection and live catalog before reporting Agent access.
-- Configuration state `generated_only` means the CLI printed a proposal but did not install it. State `written` means the target configuration was saved; reconnect when `reload_required` is true.
+- Configuration state `generated_only` means the CLI printed a proposal but did not install it. State `written` means the target configuration was saved. When `reload_required` is true, `configured but awaiting reload` is the normal result for the current session; reconnect before requiring Agent-side tool discovery.
 - Start login only when authentication is missing or explicitly rejected. Diagnose network and client-configuration failures before changing credentials.
 - For a pending login, show only the current local QR image, then immediately repeat its single-shot `poll_command` at `poll_after_seconds`. The user only scans with WeChat; there is no phone confirmation button and the Agent must not wait for another user reply.
 - Never request or expose access tokens, refresh tokens, internal device codes, or API keys.

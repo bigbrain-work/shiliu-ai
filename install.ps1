@@ -23,6 +23,30 @@ function Invoke-NativeVersion([string] $Command, [string[]] $Arguments, [string]
   return (($output | Out-String).Trim())
 }
 
+function Assert-MinimumVersion(
+  [string] $ActualVersion,
+  [string] $MinimumVersion,
+  [string] $ProductName
+) {
+  $match = [regex]::Match(
+    $ActualVersion.Trim(),
+    '^(?:v)?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:[-+].*)?$'
+  )
+  if (-not $match.Success) {
+    Stop-Install "Unable to parse $ProductName version: $ActualVersion"
+  }
+
+  $actual = [version]::new(
+    [int]$match.Groups['major'].Value,
+    [int]$match.Groups['minor'].Value,
+    [int]$match.Groups['patch'].Value
+  )
+  $minimum = [version]$MinimumVersion
+  if ($actual -lt $minimum) {
+    Stop-Install "$ProductName $MinimumVersion or newer is required, but $ActualVersion was installed. Check npm registry or proxy cache freshness and retry."
+  }
+}
+
 function Install-ShiliuPackage([string] $NpmCommand) {
   # Windows PowerShell 5.1 can treat redirected native stderr as an error.
   # Capture npm output and decide success from the native exit code.
@@ -64,14 +88,11 @@ function Stop-RunningShiliuMcp {
     }
 }
 
-$nodeCommand = Resolve-NativeCommand @('node.exe', 'node') 'Node.js 18 or newer is required.'
-$npmCommand = Resolve-NativeCommand @('npm.cmd', 'npm') 'npm was not found. Install Node.js 22 LTS from https://nodejs.org/en/download (the official installer includes npm), reopen the terminal, and rerun this command.'
+$nodeCommand = Resolve-NativeCommand @('node.exe', 'node') 'Node.js 18.14.1 or newer is required for the CLI.'
+$npmCommand = Resolve-NativeCommand @('npm.cmd', 'npm') 'npm was not found. Install Node.js 24 LTS from https://nodejs.org/en/download (the official installer includes npm), reopen the terminal, and rerun this command.'
 
-$nodeMajorText = Invoke-NativeVersion $nodeCommand @('-p', "Number(process.versions.node.split('.')[0])") 'Unable to read the Node.js version.'
-$nodeMajor = 0
-if (-not [int]::TryParse($nodeMajorText, [ref] $nodeMajor) -or $nodeMajor -lt 18) {
-  Stop-Install 'Node.js 18 or newer is required. Install Node.js 22 LTS from https://nodejs.org/en/download and rerun this command.'
-}
+$nodeVersion = Invoke-NativeVersion $nodeCommand @('-p', 'process.versions.node') 'Unable to read the Node.js version.'
+Assert-MinimumVersion $nodeVersion '18.14.1' 'Node.js'
 
 $npmVersion = Invoke-NativeVersion $npmCommand @('--version') 'Unable to read the npm version.'
 $npmMajor = 0
@@ -109,6 +130,7 @@ if ($install.ExitCode -ne 0) {
 
 $shiliuCommand = Resolve-NativeCommand @('shiliu.cmd', 'shiliu') 'The shiliu command is not on PATH. Open a new terminal and retry.'
 $shiliuVersion = Invoke-NativeVersion $shiliuCommand @('--version') 'shiliu --version returned a non-zero exit code. CLI installation could not be verified.'
+Assert-MinimumVersion $shiliuVersion '1.3.7' 'Shiliu AI CLI'
 
 Write-Host "CLI installed. Version: $shiliuVersion"
 Write-Host 'Continue with Step 3 (Install Skill) in https://bigbrain.work/shiliuAI/install.txt'

@@ -84,7 +84,13 @@ try {
 
 $node22 = @'
 @echo off
-echo 22
+echo 22.20.0
+exit /b 0
+'@
+
+$nodeTooOld = @'
+@echo off
+echo 18.13.0
 exit /b 0
 '@
 
@@ -154,12 +160,28 @@ echo version failed 1>&2
 exit /b 1
 '@
 
+$shiliuTooOld = @'
+@echo off
+echo 1.3.6
+exit /b 0
+'@
+
+$shiliuUnparseable = @'
+@echo off
+echo unknown
+exit /b 0
+'@
+
 try {
   [void](New-Item -ItemType Directory -Path $sandbox -Force)
 
   $missingNode = Invoke-InstallerCase 'missing-node' '' ''
   Assert-True ($missingNode.ExitCode -ne 0) 'Missing Node.js must fail.'
-  Assert-True ($missingNode.Output -match 'Node\.js 18 or newer') "Missing Node.js must return actionable guidance. Output: $($missingNode.Output)"
+  Assert-True ($missingNode.Output -match 'Node\.js 18\.14\.1 or newer') "Missing Node.js must return actionable guidance. Output: $($missingNode.Output)"
+
+  $tooOldNode = Invoke-InstallerCase 'old-node' $nodeTooOld $npmCurrent $shiliuSuccess
+  Assert-True ($tooOldNode.ExitCode -ne 0) 'Node.js below 18.14.1 must fail.'
+  Assert-True ($tooOldNode.Output -match 'Node\.js 18\.14\.1 or newer') "An old Node.js runtime must return actionable version guidance. Output: $($tooOldNode.Output)"
 
   $missingNpm = Invoke-InstallerCase 'missing-npm' $node22 ''
   Assert-True ($missingNpm.ExitCode -ne 0) 'Missing npm must fail.'
@@ -201,6 +223,15 @@ try {
   $versionFailure = Invoke-InstallerCase 'version-failure' $node22 $npmCurrent $shiliuFailure
   Assert-True ($versionFailure.ExitCode -ne 0) 'A failed shiliu --version check must fail installation.'
   Assert-True ($versionFailure.Output -notmatch 'CLI installed') 'A failed version check must not report installation success.'
+
+  $oldCli = Invoke-InstallerCase 'old-cli' $node22 $npmCurrent $shiliuTooOld
+  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.3.7 must fail installation.'
+  Assert-True ($oldCli.Output -match '1\.3\.7 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
+  Assert-True ($oldCli.Output -notmatch 'CLI installed') 'An old CLI must not report installation success.'
+
+  $unparseableCli = Invoke-InstallerCase 'unparseable-cli' $node22 $npmCurrent $shiliuUnparseable
+  Assert-True ($unparseableCli.ExitCode -ne 0) 'An unparseable Shiliu CLI version must fail installation.'
+  Assert-True ($unparseableCli.Output -match 'Unable to parse Shiliu AI CLI version') "An unparseable CLI version must report the parsing problem. Output: $($unparseableCli.Output)"
 
   Write-Output "Windows installer behavior tests passed with $powerShellPath."
 }
