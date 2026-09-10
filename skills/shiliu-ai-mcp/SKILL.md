@@ -1,6 +1,6 @@
 ---
 name: shiliu-ai-mcp
-description: "Use Shiliu AI MCP when a request involves Douyin or TikTok author/video data, engagement or play-count data, video or audio text extraction, AI speech/video generation, local video editing, Feishu data-sync tasks, Shiliu task status, or Shiliu points balance, even when the user does not name Shiliu AI. Do not trigger for general web search or unrelated media work. Discover the live MCP tool catalog before choosing a tool because tools and schemas can change."
+description: "Use Shiliu AI MCP when a request involves public web search; Douyin or TikTok author/video data; engagement or play-count data; video or audio text extraction; AI speech/video generation; local video editing; Feishu data-sync tasks; Shiliu task status; or Shiliu points balance, even when the user does not name Shiliu AI. Discover the live MCP tool catalog before choosing a tool because tools and schemas can change."
 ---
 
 # Shiliu AI MCP
@@ -26,6 +26,8 @@ If the server is missing or unhealthy, read [installation.md](references/install
 - For author-video lists, continue pagination only when the user needs more results. Pass the exact continuation field and value returned by the previous response and accepted by the live schema; never invent or transform a cursor.
 - Preserve platform identity: Douyin inputs go to Douyin tools and TikTok inputs go to TikTok tools.
 - Return only fields supported by tool output. Label any inference explicitly.
+
+For public-web search, read [web-search.md](references/web-search.md) before calling `web_search`. The Shiliu MCP response envelope places the documented search response under `data` and adds a sibling `billing` object.
 
 Read [workflows.md](references/workflows.md) for task patterns and [billing.md](references/billing.md) when a request may consume points.
 

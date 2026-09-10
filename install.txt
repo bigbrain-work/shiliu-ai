@@ -17,7 +17,9 @@ node --version
 npm --version
 ```
 
-Require Node.js 18 or newer. If Node/npm is missing or Node is too old, use the official Node.js 22 installer at https://nodejs.org/en/download, reopen the terminal, and recheck. The installers below upgrade npm versions older than 8 to npm 9.9.4. Preserve the current PATH; shell changes may not persist between Agent commands.
+The Shiliu CLI itself supports Node.js 18.14.1 or newer. The complete Steps 1-6 flow also uses the current `skills` CLI, which requires Node.js 22.20.0 or newer. Therefore require Node.js 22.20.0 or newer for a complete installation. If Node/npm is missing or older, use the official Node.js 24 LTS installer at https://nodejs.org/en/download, reopen the terminal, and recheck. The installers below upgrade npm versions older than 8 to npm 9.9.4. Preserve the current PATH; shell changes may not persist between Agent commands.
+
+Node.js 18.14.1-22.19 may be used only for CLI-only repair when the Skill is already installed and no `skills` command will run. Do not describe that limited state as a complete Agent installation.
 
 ## 2. Install CLI
 
@@ -71,7 +73,7 @@ Run `shiliu status`. Reuse working authentication. Log in only when credentials 
 shiliu login --no-wait --json
 ```
 
-Read `qr_code_path`, `qr_code_mime_type`, `user_code`, `poll_command`, `poll_after_seconds`, and `expires_in`. Poll responses may also include `authorization_stage` as `waiting_for_scan` or `processing_callback`. Display the existing local PNG through the current client's human-visible image capability. Agent-side image reading does not prove that the user can see it. Do not recreate or upload the QR, and do not open `verification_uri` as a normal webpage.
+Read `qr_code_path`, `qr_code_mime_type`, `user_code`, `poll_command`, `poll_after_seconds`, and `expires_in`. Poll responses may also include `authorization_stage` as `waiting_for_scan`, `processing_callback`, or `expired`. Display the existing local PNG through the current client's human-visible image capability. Agent-side image reading does not prove that the user can see it. Do not recreate or upload the QR, and do not open `verification_uri` as a normal webpage.
 
 Tell the user only: use WeChat to scan the displayed QR code. There is no confirmation button on the phone. Do not wait for the user to reply that scanning is complete.
 
@@ -101,7 +103,7 @@ shiliu install --agent MCP_AGENT --json
 
 Configure only the current client. Built-in adapters support Codex, Claude Code, and Cursor. For another safe name, the CLI may return `configuration_generated` with credential-free stdio configuration; `generated_only` means it was not written into the client.
 
-Inspect `configuration_state`, `config_path`, and `reload_required`. Preserve unrelated settings. Reload or reconnect the client when required. Do not report Agent access while configuration is only generated or while a required reload is pending.
+Inspect `configuration_state`, `config_path`, and `reload_required`. Preserve unrelated settings. Reload or reconnect the client when required. When `reload_required` is true, `configured but awaiting reload` is the normal result for the current session; do not require that same session to discover the newly written MCP connection, and do not report it as `Agent connected` yet. Do not report Agent access while configuration is only generated.
 
 On Windows, keep the generated `cmd /d /s /c npx ... mcp` stdio definition. Do not replace it with `shiliu.ps1 mcp`; npm's PowerShell wrapper may buffer piped input and is not a reliable duplex MCP transport.
 
@@ -114,7 +116,7 @@ shiliu status
 shiliu tools
 ```
 
-Require authenticated CLI connectivity and a successful live `tools/list`. Also confirm that the current Agent has loaded its MCP connection and can discover the live tools. Do not assume a fixed tool count or run billable business tools solely for installation testing.
+Require authenticated CLI connectivity and a successful live `tools/list`. When no reload is pending, also confirm that the current Agent has loaded its MCP connection and can discover the live tools. When a reload is required, report `configured but awaiting reload` as the expected installation result and tell the user to reload or reconnect the client before Agent-side discovery can be verified. Do not assume a fixed tool count or run billable business tools solely for installation testing.
 
 Report the CLI version, Skill path and scope, configuration state and location, reload state, CLI connection result, Agent connection result, and discovered tool names. Distinguish `CLI ready`, `configured but awaiting reload`, and `Agent connected`. If Agent discovery cannot be verified, say so. Continue the original task using only capabilities actually available.
 

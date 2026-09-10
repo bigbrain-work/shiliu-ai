@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: npm/mcp-connect/package-lock.json
 
@@ -32,6 +32,31 @@ jobs:
       - name: Discover public skills
         run: npx -y skills add . --list -a codex
 
+      - name: Build and verify website Skill distribution
+        run: |
+          node scripts/build-public-site-assets.mjs .tmp/public-site
+          node scripts/verify-skill-distribution.mjs .tmp/public-site/.well-known/agent-skills
+
+      - name: Discover generated website Skill archive
+        run: node scripts/test-skill-distribution-install.mjs .tmp/public-site
+
+  cli-node18:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+          cache-dependency-path: npm/mcp-connect/package-lock.json
+
+      - name: Verify the declared minimum CLI runtime
+        run: |
+          npm ci --prefix npm/mcp-connect
+          npm test --prefix npm/mcp-connect
+          npm run pack:check --prefix npm/mcp-connect
+
   windows-validate:
     runs-on: windows-latest
     defaults:
@@ -42,7 +67,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: npm/mcp-connect/package-lock.json
 

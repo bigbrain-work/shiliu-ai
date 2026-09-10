@@ -2,6 +2,10 @@
 
 Always resolve the exact live tool name and schema through `tools/list` before applying these patterns.
 
+## Public web search
+
+Read [web-search.md](web-search.md), then call the live `web_search` tool with the scope and query shape described there. Use the structured results as evidence; fetch a result page separately only when the task needs its full contents.
+
 ## Single video or author lookup
 
 1. Identify the platform from the URL.

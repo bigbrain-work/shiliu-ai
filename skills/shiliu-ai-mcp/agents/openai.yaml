@@ -1,4 +1,4 @@
 interface:
   display_name: "石榴 AI MCP"
-  short_description: "连接石榴 AI MCP，调用抖音、TikTok、视频文案与媒体工具"
-  default_prompt: "使用石榴 AI MCP 完成当前任务；首次调用前运行 shiliu skill refresh（24小时内自动跳过），然后读取实时工具列表。"
+  short_description: "连接石榴 AI MCP，调用联网搜索、短视频数据与媒体工具"
+  default_prompt: "使用 $shiliu-ai-mcp 完成当前任务，先读取实时工具列表；联网搜索时按需读取搜索说明。"
