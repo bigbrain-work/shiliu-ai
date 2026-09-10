@@ -75,6 +75,29 @@ test("creates and removes a temporary PNG QR code for Agent display", async () =
   }
 });
 
+test("creating a new QR image removes every previous Shiliu login image", async () => {
+  const temporaryDirectory = await mkdtemp(
+    path.join(os.tmpdir(), "shiliu-qr-replace-test-"),
+  );
+  try {
+    const first = await createLoginQrCode(
+      "https://example.test/authorize?state=first",
+      "ABCD-2345",
+      { temporaryDirectory },
+    );
+    const second = await createLoginQrCode(
+      "https://example.test/authorize?state=second",
+      "WXYZ-6789",
+      { temporaryDirectory },
+    );
+
+    await assert.rejects(() => stat(first), /ENOENT/u);
+    assert.equal((await stat(second)).isFile(), true);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
 test("polls through authorization_pending without losing the device code", async () => {
   let calls = 0;
   const client = {

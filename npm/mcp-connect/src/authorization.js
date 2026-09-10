@@ -33,14 +33,24 @@ export async function resolveAuthorization({
   }
   if (tokenSet) {
     if (tokenSet.expiresAt > now() + REFRESH_WINDOW_MS) {
-      return { token: tokenSet.accessToken, source: "device" };
+      return {
+        token: tokenSet.accessToken,
+        source: "device",
+        expiresAt: tokenSet.expiresAt,
+        refreshed: false,
+      };
     }
     const refreshed = normalizeTokenResponse(
       await authClient.refresh(tokenSet.refreshToken),
       now(),
     );
     await tokenStore.save(refreshed);
-    return { token: refreshed.accessToken, source: "device" };
+    return {
+      token: refreshed.accessToken,
+      source: "device",
+      expiresAt: refreshed.expiresAt,
+      refreshed: true,
+    };
   }
 
   const legacyApiKey = readPersistedApiKey({ home, platform, env })?.trim();

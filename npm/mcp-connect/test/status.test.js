@@ -35,10 +35,14 @@ test("JSON-ready status never includes the credential value", async () => {
       resolveAuth: async () => ({
         token: secret,
         source: "legacy_api_key",
+        expiresAt: 1_800_000,
+        refreshed: true,
       }),
       readCatalog: async () => [{ name: "example" }],
     });
     assert.equal(result.credential, true);
+    assert.equal(result.credentialExpiresAt, 1_800_000);
+    assert.equal(result.credentialRefreshed, true);
     assert.equal(JSON.stringify(result).includes(secret), false);
   } finally {
     await rm(home, { recursive: true, force: true });

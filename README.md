@@ -12,10 +12,10 @@
 可以直接使用：
 
 ```bash
-npx -y skills add https://bigbrain.work/shiliuAI -a codex -y
+npx -y skills add https://bigbrain.work/shiliuAI --skill shiliu-ai-mcp -a codex -y
 ```
 
-将 `codex` 换成目标 Agent 名称，或按 `skills` CLI 的交互提示选择 Agent。Skill 从石榴 AI 网站的标准 Well-known Skills 入口下载，不依赖 Git、GitHub 或本机 Git 客户端。
+将 `codex` 换成 skills CLI 支持的目标名称。Claude Code 在这里使用 `claude-code`，而 `shiliu install` 的对应内置适配器名称是 `claude`。Skill 从石榴 AI 网站的标准 Well-known Skills 入口下载，不依赖 Git、GitHub 或本机 Git 客户端。
 
 安装 CLI 需要 Node.js 18+ 和 npm 8+。官方安装脚本会把过旧的 npm 自动升级到兼容 Node 18 的 `npm@9.9.4`；如果系统没有 Node/npm，应先从 Node.js 官方页面安装 Node.js 22 LTS，官方安装器会同时提供 npm。
 
@@ -32,7 +32,7 @@ npx -y @bigbrain-work/mcp-connect@latest tools
 
 也可使用短命令名 `shiliu`。现有 `mcp-connect` 命令保持兼容。
 
-Agent 或其他非阻塞环境应运行 `shiliu login --no-wait --json`。二维码已经由 CLI 生成，Agent 只需把返回的 `qr_code_path` 本地 PNG 直接展示给用户使用微信扫码，不需要自行把链接转成二维码。`verification_uri` 是二维码载荷和排障备用地址，不应作为普通网页直接打开。授权结束或过期后，CLI 会清理临时二维码图片。
+Agent 或其他非阻塞环境应运行 `shiliu login --no-wait --json`。二维码已经由 CLI 生成，Agent 只需把返回的 `qr_code_path` 本地 PNG 直接展示给用户，然后立即按照 `poll_after_seconds` 重复执行单次 `poll_command`。用户只需微信扫码，手机端没有确认按钮，Agent 不等待用户回复。`verification_uri` 不应作为普通网页直接打开。授权结束或过期后，CLI 会清理临时二维码图片。
 
 ## 安全原则
 
@@ -45,7 +45,7 @@ Agent 或其他非阻塞环境应运行 `shiliu login --no-wait --json`。二维
 ## 发布状态
 
 - 公共仓库：`bigbrain-work/shiliu-ai`
-- npm：`@bigbrain-work/mcp-connect@1.3.6`
+- npm：`@bigbrain-work/mcp-connect@1.3.7`
 - 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
 - Windows 安装问题与发布验收：`docs/windows-install-acceptance.md`
 

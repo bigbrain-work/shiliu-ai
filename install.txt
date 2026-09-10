@@ -1,130 +1,121 @@
-# Shiliu AI Install
+# Shiliu AI: Agent installation guide
 
-Use this file for installation tasks. Do not fetch the product homepage for installation automation.
+Canonical URL: https://bigbrain.work/shiliuAI/install.txt
 
-## Goal
+Use this guide only for a user-authorized installation. Follow Steps 1-6 and resume at the failed stage after repair. Do not infer installation steps from the product homepage. Never request credentials or place tokens in commands, code, Git, Agent configuration, logs, or replies. The CLI owns credential storage.
 
-Install the Shiliu AI CLI, install the Agent skill, authenticate with WeChat, configure the current Agent, and verify the live MCP connection.
+## 1. Check the environment
 
-## 1. Prerequisite
+Identify the current Agent, shell, and runtime that will launch MCP. The CLI and MCP process must share the same OS user and credential store. If the client cannot launch local stdio servers, report the limitation before installing.
 
-Node.js 18 or newer and npm 8 or newer are required. Verify them before installation:
+For Skill scope, use the requested scope. Otherwise use a persistent project root, or user scope if no project exists. Avoid temporary directories.
 
-```bash
+Run one command per invocation and check each exit code:
+
+```text
 node --version
 npm --version
 ```
 
-If either command is missing, install Node.js 22 LTS from `https://nodejs.org/en/download`; the official Node.js installer includes npm. Reopen the terminal and resume from this section. Do not attempt to infer a runtime installer from the Shiliu product homepage.
-
-The provided `install.sh` and `install.ps1` scripts automatically upgrade npm versions older than 8 to the Node-18-compatible `npm@9.9.4` release before installing the Shiliu CLI. For the direct npm alternative, upgrade first when needed:
-
-```bash
-npm install --global npm@9.9.4
-```
+Require Node.js 18 or newer. If Node/npm is missing or Node is too old, use the official Node.js 22 installer at https://nodejs.org/en/download, reopen the terminal, and recheck. The installers below upgrade npm versions older than 8 to npm 9.9.4. Preserve the current PATH; shell changes may not persist between Agent commands.
 
 ## 2. Install CLI
 
-```bash
-# macOS / Linux / Windows Git Bash
+Choose exactly one matching installer.
+
+macOS/Linux or Windows Git Bash:
+
+```sh
 curl -fsSL https://bigbrain.work/shiliuAI/install.sh | sh
-
-# Windows PowerShell
-irm https://bigbrain.work/shiliuAI/install.ps1 | iex
-
-# Direct npm alternative
-npm install -g @bigbrain-work/mcp-connect@latest --prefer-online
 ```
+
+Windows PowerShell:
+
+```powershell
+irm https://bigbrain.work/shiliuAI/install.ps1 | iex
+```
+
+Require the installer's `CLI installed.` message and verify separately:
+
+```text
+shiliu --version
+```
+
+Require CLI 1.3.7 or newer. If `shiliu` is blocked by PowerShell execution policy, use `shiliu.cmd` in that PowerShell session. If the command is missing, resolve the npm global executable location without replacing the runtime's PATH. CLI installation alone does not complete MCP setup.
 
 ## 3. Install Skill
 
-```bash
-# Generic Agent selection
-npx -y skills add https://bigbrain.work/shiliuAI -y
+Select only the current client. Skill installer identifiers and Shiliu CLI identifiers are not always the same:
 
-# Codex
-npx -y skills add https://bigbrain.work/shiliuAI -a codex -y
+| Client | SKILL_AGENT | MCP_AGENT |
+| --- | --- | --- |
+| Codex | codex | codex |
+| Claude Code | claude-code | claude |
+| Cursor | cursor | cursor |
 
-# Claude Code
-npx -y skills add https://bigbrain.work/shiliuAI -a claude-code -y
+Install the Skill with the matching `SKILL_AGENT`:
 
-# Cursor
-npx -y skills add https://bigbrain.work/shiliuAI -a cursor -y
+```text
+npx -y skills add https://bigbrain.work/shiliuAI --skill shiliu-ai-mcp -a SKILL_AGENT -y
 ```
 
-The Skill is downloaded from Shiliu AI's standard Well-known Skills endpoint on `bigbrain.work`. This step does not require Git, GitHub access, or a local Git installation.
+Add `-g` for user scope; otherwise run from the chosen project root. This website source needs neither Git nor GitHub. Record the installed Skill path and confirm the client can discover it.
 
-## 4. Authenticate
+If the skills CLI does not support the current client, use that client's documented Skill import mechanism when available; do not guess an identifier. A Skill failure does not prevent MCP authorization when the client can still launch local stdio MCP servers. Continue in that case and report the Skill as unavailable. If the client supports neither Skills nor local stdio MCP, stop and report the limitation.
 
-```bash
-shiliu login
-```
+## 4. Authenticate with WeChat
 
-The CLI displays a WeChat QR code, validates the issued access token with the live MCP server, and stores the token set in the operating-system credential store. Do not place credentials in commands, source code, or Agent configuration files.
+Run `shiliu status`. Reuse working authentication. Log in only when credentials are absent or explicitly rejected; a network failure alone does not justify logout.
 
-For an Agent or nonblocking environment:
-
-```bash
+```text
 shiliu login --no-wait --json
 ```
 
-Read `qr_code_path`, `qr_code_mime_type`, `user_code`, `poll_command`, and `next_action_hint`. The CLI has already generated the QR code: display the local PNG at `qr_code_path` directly to the human and tell them to scan it with WeChat. Do not ask the Agent to generate another QR code. Do not open `verification_uri` as an ordinary web page; it is retained only as a troubleshooting fallback and as the QR payload. After the human confirms authorization, run the exact returned `poll_command`. The QR image is temporary and is removed after success, rejection, or expiry. The JSON response never contains the internal device code, access token, or refresh token.
+Read `qr_code_path`, `qr_code_mime_type`, `user_code`, `poll_command`, `poll_after_seconds`, and `expires_in`. Poll responses may also include `authorization_stage` as `waiting_for_scan` or `processing_callback`. Display the existing local PNG through the current client's human-visible image capability. Agent-side image reading does not prove that the user can see it. Do not recreate or upload the QR, and do not open `verification_uri` as a normal webpage.
 
-## 5. Configure the Agent
+Tell the user only: use WeChat to scan the displayed QR code. There is no confirmation button on the phone. Do not wait for the user to reply that scanning is complete.
 
-```bash
-# Automatically detect supported local Agents
-shiliu install
+Immediately run the exact returned `poll_command`. It is a single-shot command. If it returns `authorization_pending`, wait `poll_after_seconds` and run the returned command again. Continue until success, rejection, expiry, a non-retryable error, or the reported `expires_in` reaches zero. Do not use the blocking `--wait` mode in the Agent installation flow. Give the user a progress update at least once per minute.
 
-# Or target an Agent by name
-shiliu install --agent codex
+Track one active login session. Re-running `login --no-wait` must reuse an unexpired local session; do not create duplicate pollers or display an older QR image.
+
+| JSON status | Action |
+| --- | --- |
+| `success` | Continue to Step 5. |
+| `authorization_pending` | Wait the returned interval and poll the same session again. |
+| `slow_down` | Use the increased interval and poll the same session again. |
+| `expired` | End this session; create at most one replacement and clearly identify its new image. Stop if it also expires. |
+| `rejected` | Stop authorization and report rejection. |
+| `network_error` | Report the network failure without credentials; do not infer success or replace the session automatically. |
+| `error` | Report the returned error and stop unless its action is explicitly recoverable. |
+
+Pending does not prove a callback fault. Deleting a PNG does not revoke its server session.
+
+## 5. Configure the current Agent
+
+Use the `MCP_AGENT` value from the mapping table:
+
+```text
+shiliu install --agent MCP_AGENT --json
 ```
 
-Unknown safe Agent names are accepted. When no built-in adapter exists, the CLI prints a standard credential-free stdio MCP configuration.
+Configure only the current client. Built-in adapters support Codex, Claude Code, and Cursor. For another safe name, the CLI may return `configuration_generated` with credential-free stdio configuration; `generated_only` means it was not written into the client.
 
-## 6. Verify
+Inspect `configuration_state`, `config_path`, and `reload_required`. Preserve unrelated settings. Reload or reconnect the client when required. Do not report Agent access while configuration is only generated or while a required reload is pending.
 
-```bash
+On Windows, keep the generated `cmd /d /s /c npx ... mcp` stdio definition. Do not replace it with `shiliu.ps1 mcp`; npm's PowerShell wrapper may buffer piped input and is not a reliable duplex MCP transport.
+
+## 6. Verify and report
+
+Run separately:
+
+```text
 shiliu status
 shiliu tools
-shiliu update
 ```
 
-`status` must report a successful authenticated MCP connection. `tools` reads the current live `tools/list` response rather than a bundled static catalog. `update` checks the CLI version on npm but does not install anything or update Agent Skills.
+Require authenticated CLI connectivity and a successful live `tools/list`. Also confirm that the current Agent has loaded its MCP connection and can discover the live tools. Do not assume a fixed tool count or run billable business tools solely for installation testing.
 
-## 7. Update policy
+Report the CLI version, Skill path and scope, configuration state and location, reload state, CLI connection result, Agent connection result, and discovered tool names. Distinguish `CLI ready`, `configured but awaiting reload`, and `Agent connected`. If Agent discovery cannot be verified, say so. Continue the original task using only capabilities actually available.
 
-Before the first Shiliu AI MCP tool call in each user task, run the throttled refresh command once:
-
-```bash
-shiliu skill refresh
-```
-
-The CLI records the last attempt per project. It returns immediately when checked within the previous 24 hours. When due, it reinstalls only `shiliu-ai-mcp` from Shiliu AI's website for the locally detected Agents. Successful and failed attempts both enter the cooldown, so a network outage does not slow every task. Use `shiliu skill refresh --force` only when the human explicitly requests an immediate retry.
-
-For a check-only diagnostic:
-
-```bash
-# Check whether installed Skills have updates; do not install
-npx -y skills check
-```
-
-Do not run an unscoped `skills update`; the Shiliu refresh command owns the targeted update behavior. New MCP tools and field changes are still discovered from live `tools/list`; they do not require an npm update. Refreshed Skill instructions take effect in the next task or after reloading when the Agent does not dynamically reload the current context.
-
-## Troubleshooting
-
-```bash
-shiliu logout
-shiliu login
-shiliu status
-```
-
-If a newly installed global command is not found, open a new terminal and run `shiliu status` again.
-
-On Windows, an npm upgrade can report `EBUSY` or `EPERM` when a running Shiliu MCP process still has the previous credential-store native module loaded. The PowerShell installer stops only Node.js processes whose command line clearly identifies Shiliu MCP mode, then retries once; it does not stop the Agent itself. Verify `shiliu --version` and `shiliu status` afterward. If the retry still fails, close Agents that use Shiliu MCP and run the installer again.
-
-If `shiliu install --agent codex` reports that Codex failed to load its configuration, fix the field and line reported by Codex in the existing `~/.codex/config.toml`, then rerun the command. The Shiliu installer deliberately does not rewrite unrelated Codex settings.
-
-## Release status
-
-The public GitHub repository and npm package are released. This file is the canonical machine-readable installation guide. After installation, verify the active CLI and live MCP connection with `shiliu --version` and `shiliu status`.
+For an existing connection failure, use the installed Skill's `references/installation.md`. Update policy belongs to `SKILL.md`, not an extra installation stage. Do not use logout or an unscoped Skills update as generic troubleshooting.

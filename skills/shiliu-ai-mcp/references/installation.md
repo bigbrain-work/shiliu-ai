@@ -1,63 +1,37 @@
 # Installation and connection
 
-Use this reference only when the Shiliu AI MCP server is absent or unhealthy.
+Use this reference when Shiliu AI MCP is absent or unhealthy.
 
-## Preferred flow
+## Install or repair
 
-```bash
-npx -y @bigbrain-work/mcp-connect login
-npx -y @bigbrain-work/mcp-connect install
-npx -y @bigbrain-work/mcp-connect status
+Read the [canonical Agent installation guide](https://bigbrain.work/shiliuAI/install.txt) and follow its current steps. Do not infer installation steps from the product homepage or substitute an older flow. Resume at the failed stage after diagnosis; do not restart installation or clear credentials by default. Use the verified `shiliu` executable consistently.
+
+The guide owns CLI and Skill installation, nonblocking WeChat authorization, configuration of the current Agent, and completion checks. Skill installer identifiers and Shiliu CLI adapter identifiers can differ; use the mapping in the guide.
+
+If Skill installation is unavailable but the client supports local stdio MCP, continue MCP setup and report the missing Skill separately. Do not report full completion until the current Agent has loaded the MCP connection and can discover its live tools.
+
+## Diagnose an existing connection
+
+Run separately and inspect each result:
+
+```text
+shiliu --version
+shiliu status
+shiliu tools
 ```
 
-The package also exposes `shiliu` as a command name. `mcp-connect` remains available for backward compatibility.
+- A missing executable is a runtime or PATH issue. Preserve the current PATH when resolving it. In Windows PowerShell, use `shiliu.cmd` when execution policy blocks the PowerShell command shim.
+- CLI authentication and live tool discovery verify only the CLI connection. Inspect the current Agent's MCP connection and live catalog before reporting Agent access.
+- Configuration state `generated_only` means the CLI printed a proposal but did not install it. State `written` means the target configuration was saved; reconnect when `reload_required` is true.
+- Start login only when authentication is missing or explicitly rejected. Diagnose network and client-configuration failures before changing credentials.
+- For a pending login, show only the current local QR image, then immediately repeat its single-shot `poll_command` at `poll_after_seconds`. The user only scans with WeChat; there is no phone confirmation button and the Agent must not wait for another user reply.
+- Never request or expose access tokens, refresh tokens, internal device codes, or API keys.
 
-For a nonblocking Agent flow, start the login and follow the returned machine-readable continuation command:
+## Maintenance and platform recovery
+Follow the update policy in [SKILL.md](../SKILL.md); it owns targeted `shiliu skill refresh` and cooldown. Installation does not require an additional maintenance pass. Discover tool names and schemas from the live MCP catalog.
 
-```bash
-shiliu login --no-wait --json
-shiliu login poll --session <login_session_id> --wait --json
-```
+For an explicitly requested CLI version check, `shiliu update` checks npm without installing anything. Do not run an unscoped `skills update` or switch to a temporary `npx` CLI as routine repair.
 
-The CLI has already generated the QR code. Display the local PNG at `qr_code_path` directly to the human and tell them to scan it with WeChat; do not ask the Agent to generate another QR code. Do not open `verification_uri` as an ordinary web page; it is only a fallback and the QR payload. Run `poll_command` only after the human confirms that WeChat authorization is complete. The CLI removes the temporary QR image after success, rejection, or expiry. Never expose or request the internal device code.
+On Windows, the PowerShell installer retries a failed package installation once for EBUSY/EPERM, stopping only identifiable Shiliu MCP Node processes. If it still fails, report the lock or permission error and ask the user to close affected MCP clients before another attempt. After a successful upgrade, reconnect affected clients and verify their connection.
 
-## Target one Agent
-
-```bash
-npx -y @bigbrain-work/mcp-connect install --agent codex
-```
-
-Known adapters configure Codex, Claude Code, and Cursor. For an unknown Agent name, the CLI prints a standard stdio MCP definition instead of rejecting the name.
-
-## Diagnostics
-
-```bash
-npx -y @bigbrain-work/mcp-connect status
-npx -y @bigbrain-work/mcp-connect tools
-npx -y @bigbrain-work/mcp-connect update
-```
-
-`status` checks the local configuration and performs an authenticated MCP connection plus live tool discovery. `tools` prints the current catalog returned by `tools/list`.
-
-`update` checks the installed CLI against npm and prints the upgrade command when a newer CLI exists. It does not update Agent Skills.
-
-## Skill updates
-
-Before the first Shiliu AI MCP tool call in each user task, run the throttled refresh command once:
-
-```bash
-shiliu skill refresh
-```
-
-The CLI records the last attempt per project. It returns immediately for 24 hours, and when due it invokes only `npx -y skills add https://bigbrain.work/shiliuAI -y`. The Skill is downloaded from Shiliu AI's Well-known Skills endpoint and does not require Git, GitHub access, or a local Git installation. Successful and failed attempts both enter the cooldown so a network outage does not slow every user task. Use `shiliu skill refresh --force` only when the user explicitly requests an immediate retry.
-
-For manual diagnostics:
-
-```bash
-# Check all installed Skills without changing them
-npx -y skills check
-```
-
-Do not run an unscoped `skills update`; the Shiliu refresh command owns the targeted update behavior. A changed MCP tool or field is still discovered through live `tools/list`; it does not depend on the Skill refresh. Refreshed instructions take effect in the next task or after reloading when the client does not dynamically reload the current context.
-
-Do not pass credentials as command-line flags because shell history and process listings can expose them. The default login displays a WeChat QR code, verifies the issued access token with `tools/list`, and stores the token set in the operating-system credential store. During the transition period, explicitly pass `--legacy-api-key` only when an existing API Key must be used.
+If Codex reports an existing configuration error, address the reported field and line while preserving unrelated settings, then retry configuration. Do not replace the entire Agent configuration to fix a Shiliu connection.

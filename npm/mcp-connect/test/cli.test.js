@@ -66,3 +66,36 @@ test("unknown agent gets a portable stdio configuration", async () => {
     await rm(home, { recursive: true, force: true });
   }
 });
+
+test("unknown agent JSON reports generated-only configuration", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "shiliu-generic-json-"));
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [
+        path.resolve("bin/shiliu.js"),
+        "install",
+        "--agent",
+        "openclaw",
+        "--dry-run",
+        "--json",
+        "--home",
+        home,
+      ],
+      {
+        cwd: path.resolve("."),
+        encoding: "utf8",
+        env: { ...process.env, [API_KEY_ENV]: "sk-test-secret-value" },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const lines = result.stdout.trim().split(/\r?\n/u);
+    const jsonStart = lines.findIndex((line) => line.trim() === "{");
+    const payload = JSON.parse(lines.slice(jsonStart).join("\n"));
+    assert.equal(payload.status, "configuration_generated");
+    assert.equal(payload.results[0].configuration_state, "generated_only");
+    assert.equal(payload.results[0].config_path, null);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});

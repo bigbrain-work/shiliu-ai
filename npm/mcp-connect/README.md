@@ -8,9 +8,9 @@
 # 微信扫码登录；令牌进入操作系统凭据库
 npx -y @bigbrain-work/mcp-connect login
 
-# Agent/无头环境：先创建会话并立即返回，再按返回的 poll_command 继续
+# Agent/无头环境：展示二维码后立即按返回间隔短轮询，不等待用户回复
 npx -y @bigbrain-work/mcp-connect login --no-wait --json
-npx -y @bigbrain-work/mcp-connect login poll --session <会话号> --wait --json
+npx -y @bigbrain-work/mcp-connect login poll --session <会话号> --json
 
 # 自动检测并配置已安装的 Agent
 npx -y @bigbrain-work/mcp-connect install
@@ -47,6 +47,8 @@ npx -y @bigbrain-work/mcp-connect install --agent openclaw
 ```
 
 对未内置适配器的 Agent，CLI 会输出标准 stdio MCP 配置。名称只用于提示，不要求我们枚举所有 Agent。
+
+Windows 上请使用 CLI 生成的 `cmd /d /s /c npx ... mcp` 配置，不要把 npm 自动生成的 `shiliu.ps1 mcp` 注册为 MCP command；PowerShell 包装器不适合作为长期双向 stdio 通道。MCP 进程遇到登录令牌过期或用户重新扫码后返回的 401，会自动重读系统凭据并重连一次，无需把令牌写入 Agent 配置。
 
 ## 凭据安全
 

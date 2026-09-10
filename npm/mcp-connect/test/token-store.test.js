@@ -121,6 +121,8 @@ test("stores a pending device code separately from access tokens", async () => {
     expiresAt: 123456789,
     interval: 5,
     authUrl: "https://example.test/auth/device",
+    qrCodePath: "C:\\Temp\\shiliu-login-ABCD-2345.png",
+    qrCodeValue: "https://example.test/authorize",
   };
 
   await store.save(pending);

@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { access } from "node:fs/promises";
 
 import { resolveAuthorization } from "./authorization.js";
 import { parseCliArguments } from "./arguments.js";
@@ -84,18 +85,29 @@ function printHelp() {
   任意安全的 Agent 名称均可传入；未内置适配器时输出标准 stdio MCP 配置。`);
 }
 
-function printGenericInstructions(agent, { dryRun = false } = {}) {
+function printGenericInstructions(
+  agent,
+  { dryRun = false, json = false } = {},
+) {
   const config = {
     mcpServers: {
       [SERVER_NAME]: stdioServerDefinition(),
     },
   };
-  console.log(`暂未内置 ${agent} 的自动配置适配器。请在该 Agent 中添加下面的标准 stdio MCP 配置：
+  const result = {
+    agent,
+    configuration_state: "generated_only",
+    config_path: null,
+    reload_required: false,
+    config,
+  };
+  if (!json) console.log(`暂未内置 ${agent} 的自动配置适配器。请在该 Agent 中添加下面的标准 stdio MCP 配置：
 
 ${JSON.stringify(config, null, 2)}
 
 桥接器连接 ${MCP_URL}，并从本机凭据存储读取授权信息。
 ${dryRun ? "演练模式没有保存凭据。" : "Agent 配置中不包含真实凭据。"} 请勿将凭据写入项目代码或提交到 Git。`);
+  return result;
 }
 
 async function legacyLogin({ home, dryRun, url }) {
@@ -112,7 +124,13 @@ async function legacyLogin({ home, dryRun, url }) {
   );
 }
 
-function buildPendingLogin(start, authUrl, allowLocalhost, qrCodePath) {
+function buildPendingLogin(
+  start,
+  authUrl,
+  allowLocalhost,
+  qrCodePath,
+  qrCodeValue,
+) {
   return {
     sessionId: normalizeDeviceUserCode(start.user_code),
     deviceCode: start.device_code,
@@ -121,6 +139,7 @@ function buildPendingLogin(start, authUrl, allowLocalhost, qrCodePath) {
     authUrl,
     allowLocalhost,
     qrCodePath,
+    qrCodeValue,
   };
 }
 
@@ -130,6 +149,7 @@ export function buildLoginInstructions(
 ) {
   const sessionId = normalizeDeviceUserCode(start.user_code);
   const localhostOption = allowLocalhost ? " --allow-localhost" : "";
+  const pollAfterSeconds = Number(start.interval) || 5;
   return {
     status: "authorization_pending",
     login_session_id: sessionId,
@@ -141,22 +161,108 @@ export function buildLoginInstructions(
     qr_code_path: qrCodePath,
     qr_code_mime_type: "image/png",
     expires_in: Number(start.expires_in),
-    poll_command: `shiliu login poll --session ${sessionId} --wait --json${localhostOption}`,
+    poll_after_seconds: pollAfterSeconds,
+    latest_qr_only: true,
+    mobile_confirmation_required: false,
+    poll_command: `shiliu login poll --session ${sessionId} --json${localhostOption}`,
     next_action_hint:
-      "二维码已由石榴 CLI 生成。请直接向用户展示 qr_code_path 指向的图片，让用户使用微信扫码授权；不要自行生成二维码，也不要把 verification_uri 当作普通网页打开。用户确认后运行 poll_command。",
+      "二维码已由石榴 CLI 生成。只展示本次 user_code 对应的 qr_code_path 本地图片，旧二维码一律不要再展示或轮询；不要上传图片、不要自行生成二维码、不要把 verification_uri 当作网页打开。展示后立即运行 poll_command；若仍为 authorization_pending，等待 poll_after_seconds 后重复运行，直到 success 或过期。用户只需微信扫码，手机端没有二次确认按钮，不要等待用户再回复已扫码。",
   };
+}
+
+export function buildPendingPollResult(
+  pending,
+  now = Date.now(),
+  reason = "authorization_pending",
+  details = {},
+) {
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil((pending.expiresAt - now) / 1000),
+  );
+  const result = {
+    status: reason === "slow_down" ? "slow_down" : "authorization_pending",
+    login_session_id: pending.sessionId,
+    poll_after_seconds: pending.interval,
+    expires_in: remainingSeconds,
+    poll_command: `shiliu login poll --session ${pending.sessionId} --json${pending.allowLocalhost ? " --allow-localhost" : ""}`,
+    next_action_hint:
+      reason === "slow_down"
+        ? "轮询过快。等待新的 poll_after_seconds 后自动再次运行 poll_command；不要创建新会话。"
+        : "等待 poll_after_seconds 后自动再次运行 poll_command；不要等待用户回复。用户只需微信扫码。",
+  };
+  if (typeof details.authorization_stage === "string") {
+    result.authorization_stage = details.authorization_stage;
+  }
+  return result;
+}
+
+async function fileExists(filePath) {
+  if (!filePath) return false;
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+async function printOrReturnLoginInstructions(instructions, json) {
+  if (json) {
+    printJson(instructions);
+    return;
+  }
+  console.log(`请使用微信扫描二维码完成登录（验证码 ${instructions.user_code}）：`);
+  console.log(`二维码图片：${instructions.qr_code_path}`);
+  console.log(`请立即运行：${instructions.poll_command.replace(" --json", "")}`);
 }
 
 function printJson(value) {
   console.log(JSON.stringify(value, null, 2));
 }
 
-async function startPendingDeviceLogin({
+export async function startPendingDeviceLogin({
   authUrl,
   allowLocalhost,
   json,
   pendingLoginStore,
 }) {
+  const existing = await pendingLoginStore.load();
+  if (existing && existing.expiresAt > Date.now()) {
+    let qrCodePath = existing.qrCodePath;
+    if (!(await fileExists(qrCodePath)) && existing.qrCodeValue) {
+      qrCodePath = await createLoginQrCode(
+        existing.qrCodeValue,
+        existing.sessionId,
+      );
+      await pendingLoginStore.save({ ...existing, qrCodePath });
+    }
+    if (await fileExists(qrCodePath)) {
+      const instructions = buildLoginInstructions(
+        {
+          user_code: existing.sessionId,
+          verification_uri_complete: existing.qrCodeValue,
+          expires_in: Math.max(
+            1,
+            Math.ceil((existing.expiresAt - Date.now()) / 1000),
+          ),
+          interval: existing.interval,
+        },
+        { allowLocalhost: existing.allowLocalhost, qrCodePath },
+      );
+      instructions.reused_session = true;
+      await printOrReturnLoginInstructions(instructions, json);
+      return;
+    }
+    throw new DeviceAuthError(
+      "pending_session_unrecoverable",
+      "仍有未过期的登录会话，但本地二维码文件无法恢复。请等待该会话过期后重试。",
+    );
+  } else if (existing) {
+    await clearPendingLogin(pendingLoginStore, existing);
+  }
+
   const client = new DeviceAuthClient({ baseUrl: authUrl });
   const start = await client.start();
   const sessionId = normalizeDeviceUserCode(start.user_code);
@@ -167,7 +273,13 @@ async function startPendingDeviceLogin({
   const qrCodePath = await createLoginQrCode(qrCodeValue, sessionId);
   try {
     await pendingLoginStore.save(
-      buildPendingLogin(start, authUrl, allowLocalhost, qrCodePath),
+      buildPendingLogin(
+        start,
+        authUrl,
+        allowLocalhost,
+        qrCodePath,
+        qrCodeValue,
+      ),
     );
   } catch (error) {
     await removeLoginQrCode(qrCodePath);
@@ -177,16 +289,8 @@ async function startPendingDeviceLogin({
     allowLocalhost,
     qrCodePath,
   });
-  if (json) {
-    printJson(instructions);
-    return;
-  }
-  console.log(`请使用微信扫描二维码完成登录（验证码 ${start.user_code}）：`);
-  console.log(await renderQrCode(qrCodeValue));
-  console.log(`二维码图片：${instructions.qr_code_path}`);
-  console.log(
-    `完成后运行：${instructions.poll_command.replace(" --json", "")}`,
-  );
+  if (!json) console.log(await renderQrCode(qrCodeValue));
+  await printOrReturnLoginInstructions(instructions, json);
 }
 
 async function clearPendingLogin(pendingLoginStore, pending) {
@@ -209,7 +313,12 @@ async function pollPendingDeviceLogin({
   }
   if (pending.expiresAt <= Date.now()) {
     await clearPendingLogin(pendingLoginStore, pending);
-    throw new Error("登录会话已过期，请重新运行 shiliu login");
+    throw new DeviceAuthError(
+      "expired_token",
+      "登录会话已过期，请重新运行 shiliu login",
+      400,
+      { authorization_stage: "expired", expires_in: 0 },
+    );
   }
 
   const pendingAuthUrl = validateAuthUrl(pending.authUrl, {
@@ -240,13 +349,35 @@ async function pollPendingDeviceLogin({
       error instanceof DeviceAuthError &&
       ["authorization_pending", "slow_down"].includes(error.code)
     ) {
-      const result = {
-        status: "authorization_pending",
-        login_session_id: pending.sessionId,
-        poll_command: `shiliu login poll --session ${pending.sessionId} --wait --json`,
-      };
+      let nextPending = pending;
+      const serverInterval = Number(error.details?.retry_after_seconds) || 0;
+      if (error.code === "slow_down") {
+        nextPending = {
+          ...pending,
+          interval: Math.max(pending.interval + 5, serverInterval),
+        };
+      } else if (serverInterval > pending.interval) {
+        nextPending = { ...pending, interval: serverInterval };
+      }
+      if (nextPending !== pending) {
+        await pendingLoginStore.save(nextPending);
+      }
+      const result = buildPendingPollResult(
+        nextPending,
+        Date.now(),
+        error.code,
+        error.details,
+      );
       if (json) printJson(result);
-      else console.log("登录尚未完成，请授权后重新运行并加上 --wait。");
+      else if (error.code === "slow_down") {
+        console.log(
+          `轮询过快，请等待 ${nextPending.interval} 秒后再次运行同一命令。`,
+        );
+      } else {
+        console.log(
+          `登录尚未完成，请等待 ${nextPending.interval} 秒后再次运行同一命令。`,
+        );
+      }
       return;
     }
     if (
@@ -397,6 +528,7 @@ async function install({
   authUrl,
   legacyApiKey,
   tokenStore,
+  json,
 }) {
   await ensureLogin({
     home,
@@ -408,7 +540,8 @@ async function install({
   });
   const requestedAgent = agent === "auto" ? undefined : agent;
   if (requestedAgent && !SUPPORTED_AGENTS.includes(requestedAgent)) {
-    printGenericInstructions(requestedAgent, { dryRun });
+    const result = printGenericInstructions(requestedAgent, { dryRun, json });
+    if (json) printJson({ status: "configuration_generated", results: [result] });
     return;
   }
 
@@ -416,17 +549,72 @@ async function install({
     ? [requestedAgent]
     : await detectInstalledAgents({ home });
   if (agents.length === 0) {
-    printGenericInstructions("当前客户端", { dryRun });
+    const result = printGenericInstructions("当前客户端", { dryRun, json });
+    if (json) printJson({ status: "configuration_generated", results: [result] });
     return;
   }
+  const results = [];
   for (const detectedAgent of agents) {
-    await configureAgent(detectedAgent, { dryRun, home });
+    results.push(await configureAgent(detectedAgent, { dryRun, home }));
+  }
+  if (json) {
+    printJson({
+      status: dryRun ? "dry_run" : "configured",
+      reload_required: results.some((result) => result.reload_required),
+      results,
+    });
+    return;
   }
   console.log(
     dryRun
       ? `检查完成：将为 ${agents.join("、")} 配置 ${MCP_URL}，未写入文件。`
-      : `配置完成：${agents.join("、")} 已接入石榴 AI MCP。请重启客户端后运行 shiliu status。`,
+      : `配置已写入：${agents.join("、")}。请重启或重载客户端后运行 shiliu status。`,
   );
+  for (const result of results) {
+    console.log(`${result.agent} 配置位置：${result.config_path}`);
+  }
+}
+
+function isNetworkError(error) {
+  return (
+    ["AbortError", "TimeoutError"].includes(error?.name) ||
+    /fetch failed|network|timed? out|ECONN|ENOTFOUND|EAI_AGAIN/iu.test(
+      `${error?.message || ""} ${error?.cause?.code || ""}`,
+    )
+  );
+}
+
+export function formatCliError(error) {
+  const code =
+    error instanceof DeviceAuthError
+      ? error.code
+      : isNetworkError(error)
+        ? "network_error"
+        : "command_failed";
+  const status =
+    code === "expired_token"
+      ? "expired"
+      : ["access_denied", "authorization_declined"].includes(code)
+        ? "rejected"
+        : code === "network_error"
+          ? "network_error"
+          : "error";
+  const result = {
+    status,
+    error: code,
+    message: error?.message || "命令执行失败",
+  };
+  const details = error instanceof DeviceAuthError ? error.details : {};
+  if (typeof details?.authorization_stage === "string") {
+    result.authorization_stage = details.authorization_stage;
+  }
+  if (Number.isFinite(Number(details?.retry_after_seconds))) {
+    result.poll_after_seconds = Number(details.retry_after_seconds);
+  }
+  if (Number.isFinite(Number(details?.expires_in))) {
+    result.expires_in = Number(details.expires_in);
+  }
+  return result;
 }
 
 export async function runCli(argv = process.argv.slice(2)) {
@@ -520,5 +708,6 @@ export async function runCli(argv = process.argv.slice(2)) {
     legacyApiKey: options.legacyApiKey,
     allowLocalhost: options.allowLocalhost,
     tokenStore,
+    json: options.json,
   });
 }
