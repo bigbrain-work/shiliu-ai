@@ -84,13 +84,14 @@ export function commandInvocation(
   return { command, args };
 }
 
-function execute(command, args, { dryRun = false } = {}) {
+function execute(command, args, options = {}) {
+  const { dryRun = false } = options;
   if (dryRun) {
     console.log(`[dry-run] ${commandText(command, args)}`);
-    return;
+    return { stdout: "", stderr: "" };
   }
 
-  const invocation = commandInvocation(command, args);
+  const invocation = commandInvocation(command, args, options);
   const result = spawnSync(invocation.command, invocation.args, {
     encoding: "utf8",
     windowsHide: true,
@@ -107,6 +108,7 @@ function execute(command, args, { dryRun = false } = {}) {
     error.commandOutput = detail;
     throw error;
   }
+  return { stdout: result.stdout || "", stderr: result.stderr || "" };
 }
 
 function isDuplicateError(error) {
@@ -116,6 +118,12 @@ function isDuplicateError(error) {
 }
 
 export function configureCodex(options = {}) {
+  const home = options.home || process.env.USERPROFILE || process.env.HOME;
+  const environment = options.env || process.env;
+  const configPath = path.join(
+    environment.CODEX_HOME || path.join(home, ".codex"),
+    "config.toml",
+  );
   try {
     execute("codex", codexArguments(), options);
   } catch (error) {
@@ -123,9 +131,17 @@ export function configureCodex(options = {}) {
     execute("codex", ["mcp", "remove", SERVER_NAME], options);
     execute("codex", codexArguments(), options);
   }
+  return {
+    agent: "codex",
+    configuration_state: options.dryRun ? "dry_run" : "written",
+    config_path: configPath,
+    reload_required: !options.dryRun,
+  };
 }
 
 export function configureClaude(options = {}) {
+  const home = options.home || process.env.USERPROFILE || process.env.HOME;
+  const configPath = path.join(home, ".claude.json");
   const addArgs = [
     "mcp",
     "add-json",
@@ -145,6 +161,12 @@ export function configureClaude(options = {}) {
     );
     execute("claude", addArgs, options);
   }
+  return {
+    agent: "claude",
+    configuration_state: options.dryRun ? "dry_run" : "written",
+    config_path: configPath,
+    reload_required: !options.dryRun,
+  };
 }
 
 export async function configureCursor({ home, dryRun = false } = {}) {
@@ -153,7 +175,12 @@ export async function configureCursor({ home, dryRun = false } = {}) {
     console.log(
       `[dry-run] 更新 ${configPath} 中的 ${SERVER_NAME}，使用本地 stdio 桥接`,
     );
-    return configPath;
+    return {
+      agent: "cursor",
+      configuration_state: "dry_run",
+      config_path: configPath,
+      reload_required: false,
+    };
   }
 
   let config = {};
@@ -175,7 +202,12 @@ export async function configureCursor({ home, dryRun = false } = {}) {
   const tempPath = `${configPath}.${process.pid}.tmp`;
   await writeFile(tempPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   await rename(tempPath, configPath);
-  return configPath;
+  return {
+    agent: "cursor",
+    configuration_state: "written",
+    config_path: configPath,
+    reload_required: true,
+  };
 }
 
 export async function configureAgent(agent, options) {

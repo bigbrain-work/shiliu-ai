@@ -13,6 +13,7 @@ import {
 import { resolveAuthorization } from "./authorization.js";
 import { API_KEY_ENV, AUTH_URL, PACKAGE_VERSION } from "./constants.js";
 import { connectRemote } from "./remote-client.js";
+import { connectRecoveringRemote } from "./recovering-remote.js";
 
 export async function runProxy({
   home,
@@ -22,19 +23,25 @@ export async function runProxy({
   env = process.env,
   tokenStore,
 } = {}) {
-  const authorization = await resolveAuthorization({
-    home,
-    platform,
-    env,
-    authUrl,
-    tokenStore,
+  const remote = await connectRecoveringRemote({
+    url,
+    connectRemote,
+    resolveAuthorization: async () => {
+      const authorization = await resolveAuthorization({
+        home,
+        platform,
+        env,
+        authUrl,
+        tokenStore,
+      });
+      if (!authorization.token) {
+        throw new Error(
+          `未找到登录凭据，请先运行 shiliu login，或设置 ${API_KEY_ENV}`,
+        );
+      }
+      return authorization;
+    },
   });
-  if (!authorization.token) {
-    throw new Error(
-      `未找到登录凭据，请先运行 shiliu login，或设置 ${API_KEY_ENV}`,
-    );
-  }
-  const remote = await connectRemote({ token: authorization.token, url });
   const remoteCapabilities = remote.getServerCapabilities() ?? {};
   const capabilities = {};
   if (remoteCapabilities.tools) capabilities.tools = {};
@@ -52,29 +59,29 @@ export async function runProxy({
 
   if (remoteCapabilities.tools) {
     server.setRequestHandler(ListToolsRequestSchema, (request) =>
-      remote.listTools(request.params),
+      remote.invoke("listTools", request.params),
     );
     server.setRequestHandler(CallToolRequestSchema, (request) =>
-      remote.callTool(request.params),
+      remote.invoke("callTool", request.params),
     );
   }
   if (remoteCapabilities.resources) {
     server.setRequestHandler(ListResourcesRequestSchema, (request) =>
-      remote.listResources(request.params),
+      remote.invoke("listResources", request.params),
     );
     server.setRequestHandler(ListResourceTemplatesRequestSchema, (request) =>
-      remote.listResourceTemplates(request.params),
+      remote.invoke("listResourceTemplates", request.params),
     );
     server.setRequestHandler(ReadResourceRequestSchema, (request) =>
-      remote.readResource(request.params),
+      remote.invoke("readResource", request.params),
     );
   }
   if (remoteCapabilities.prompts) {
     server.setRequestHandler(ListPromptsRequestSchema, (request) =>
-      remote.listPrompts(request.params),
+      remote.invoke("listPrompts", request.params),
     );
     server.setRequestHandler(GetPromptRequestSchema, (request) =>
-      remote.getPrompt(request.params),
+      remote.invoke("getPrompt", request.params),
     );
   }
 

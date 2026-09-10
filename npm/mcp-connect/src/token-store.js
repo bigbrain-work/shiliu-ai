@@ -156,6 +156,8 @@ function validatePendingLogin(value) {
     typeof value.interval !== "number" ||
     typeof value.authUrl !== "string" ||
     (value.qrCodePath !== undefined && typeof value.qrCodePath !== "string") ||
+    (value.qrCodeValue !== undefined &&
+      typeof value.qrCodeValue !== "string") ||
     (value.allowLocalhost !== undefined &&
       typeof value.allowLocalhost !== "boolean")
   ) {

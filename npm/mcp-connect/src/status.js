@@ -80,6 +80,8 @@ export async function getStatus({
   return {
     credential: Boolean(authorization.token),
     credentialSource: authorization.source,
+    credentialExpiresAt: authorization.expiresAt ?? null,
+    credentialRefreshed: Boolean(authorization.refreshed),
     configs,
     remote,
   };
@@ -93,6 +95,8 @@ export async function printStatus(options = {}) {
         {
           credential: result.credential,
           credentialSource: result.credentialSource,
+          credentialExpiresAt: result.credentialExpiresAt,
+          credentialRefreshed: result.credentialRefreshed,
           configs: result.configs,
           remote: {
             ok: result.remote.ok,
@@ -110,6 +114,11 @@ export async function printStatus(options = {}) {
   console.log(
     `登录凭据          ${mark(result.credential)} ${result.credential ? `已设置（${result.credentialSource}）` : "未设置"}`,
   );
+  if (result.credentialExpiresAt) {
+    console.log(
+      `访问令牌到期      ○ ${formatLocalDateTime(result.credentialExpiresAt)}${result.credentialRefreshed ? "（本次已自动刷新）" : ""}`,
+    );
+  }
   console.log(
     `Codex 配置        ${mark(result.configs.codex)} ${result.configs.codex ? "已写入" : "未发现"}`,
   );
@@ -123,6 +132,12 @@ export async function printStatus(options = {}) {
     `石榴 AI MCP       ${mark(result.remote.ok)} ${result.remote.detail}`,
   );
   return result;
+}
+
+function formatLocalDateTime(epochMillis) {
+  const value = new Date(epochMillis);
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`;
 }
 
 export async function printTools({

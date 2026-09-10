@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { chmod, mkdir, readdir, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -7,11 +7,12 @@ import QRCode from "qrcode";
 import { AUTH_URL } from "./constants.js";
 
 export class DeviceAuthError extends Error {
-  constructor(code, message, status) {
+  constructor(code, message, status, details = {}) {
     super(message || code);
     this.name = "DeviceAuthError";
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -32,6 +33,7 @@ async function requestJson(url, options, fetchImpl) {
       body.error || "request_failed",
       body.error_description || body.message || `HTTP ${response.status}`,
       response.status,
+      body,
     );
   }
   return payload;
@@ -103,8 +105,6 @@ export async function renderQrCode(value) {
 
 const QR_CODE_DIRECTORY = "shiliu-ai";
 const QR_CODE_PREFIX = "shiliu-login-";
-const QR_CODE_MAX_AGE_MS = 15 * 60 * 1000;
-
 function qrCodeDirectory(temporaryDirectory = os.tmpdir()) {
   return path.resolve(temporaryDirectory, QR_CODE_DIRECTORY);
 }
@@ -119,7 +119,7 @@ function isManagedQrCodePath(filePath, temporaryDirectory = os.tmpdir()) {
   );
 }
 
-async function removeStaleQrCodes(directory, now) {
+async function removePreviousQrCodes(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   await Promise.all(
     entries
@@ -131,10 +131,7 @@ async function removeStaleQrCodes(directory, now) {
       )
       .map(async (entry) => {
         const filePath = path.join(directory, entry.name);
-        const metadata = await stat(filePath);
-        if (now() - metadata.mtimeMs > QR_CODE_MAX_AGE_MS) {
-          await unlink(filePath).catch(() => {});
-        }
+        await unlink(filePath).catch(() => {});
       }),
   );
 }
@@ -142,14 +139,14 @@ async function removeStaleQrCodes(directory, now) {
 export async function createLoginQrCode(
   value,
   sessionId,
-  { temporaryDirectory = os.tmpdir(), now = Date.now } = {},
+  { temporaryDirectory = os.tmpdir() } = {},
 ) {
   if (!/^[A-Z0-9-]{4,64}$/u.test(sessionId)) {
     throw new Error("登录会话编号格式无效");
   }
   const directory = qrCodeDirectory(temporaryDirectory);
   await mkdir(directory, { recursive: true, mode: 0o700 });
-  await removeStaleQrCodes(directory, now);
+  await removePreviousQrCodes(directory);
   const filePath = path.join(directory, `${QR_CODE_PREFIX}${sessionId}.png`);
   await QRCode.toFile(filePath, value, {
     type: "png",

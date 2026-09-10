@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
@@ -15,6 +17,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { API_KEY_ENV } from "../src/constants.js";
+import { stdioServerDefinition } from "../src/configurators.js";
 
 async function readJsonBody(request) {
   const chunks = [];
@@ -136,6 +139,72 @@ test(
     } finally {
       await client.close();
       await remote.close();
+    }
+  },
+);
+
+test(
+  "Windows cmd shim preserves duplex MCP stdio",
+  { timeout: 15000, skip: process.platform !== "win32" },
+  async () => {
+    const remote = createRemoteMcp();
+    const sandbox = await mkdtemp(path.join(os.tmpdir(), "shiliu-stdio-"));
+    await new Promise((resolveListen) =>
+      remote.httpServer.listen(0, "127.0.0.1", resolveListen),
+    );
+    const address = remote.httpServer.address();
+    const url = `http://127.0.0.1:${address.port}/mcp`;
+    const npxShim = path.join(sandbox, "npx.cmd");
+    await writeFile(
+      npxShim,
+      [
+        "@echo off",
+        '"%SHILIU_TEST_NODE%" "%SHILIU_TEST_PROXY_ENTRY%" "%SHILIU_TEST_MCP_URL%"',
+        "",
+      ].join("\r\n"),
+      "ascii",
+    );
+    const definition = stdioServerDefinition("win32");
+    const transport = new StdioClientTransport({
+      command: definition.command,
+      args: definition.args,
+      env: {
+        ...process.env,
+        PATH: `${sandbox};${process.env.PATH || ""}`,
+        [API_KEY_ENV]: "integration-secret",
+        SHILIU_TEST_NODE: process.execPath,
+        SHILIU_TEST_PROXY_ENTRY: path.resolve("test-support/proxy-entry.js"),
+        SHILIU_TEST_MCP_URL: url,
+      },
+      stderr: "pipe",
+    });
+    const client = new Client({ name: "windows-stdio-test", version: "1.0.0" });
+    let childStderr = "";
+    transport.stderr?.setEncoding("utf8");
+    transport.stderr?.on("data", (chunk) => {
+      childStderr += chunk;
+    });
+
+    try {
+      try {
+        await client.connect(transport);
+      } catch (error) {
+        throw new Error(
+          `${error.message}${childStderr ? `; child stderr: ${childStderr.trim()}` : ""}`,
+          { cause: error },
+        );
+      }
+      const tools = await client.listTools();
+      assert.deepEqual(tools.tools.map((tool) => tool.name), ["echo"]);
+      const result = await client.callTool({
+        name: "echo",
+        arguments: { value: "windows-cmd" },
+      });
+      assert.equal(result.content[0].text, "echo:windows-cmd");
+    } finally {
+      await client.close();
+      await remote.close();
+      await rm(sandbox, { recursive: true, force: true });
     }
   },
 );

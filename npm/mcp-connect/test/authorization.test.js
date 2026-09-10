@@ -16,7 +16,12 @@ test("uses an unexpired device access token", async () => {
     now: () => 1_000,
   });
 
-  assert.deepEqual(result, { token: "device-access", source: "device" });
+  assert.deepEqual(result, {
+    token: "device-access",
+    source: "device",
+    expiresAt: 120_000,
+    refreshed: false,
+  });
 });
 
 test("rotates an expiring device token before returning it", async () => {
@@ -47,6 +52,8 @@ test("rotates an expiring device token before returning it", async () => {
 
   assert.equal(result.token, "new-access");
   assert.equal(result.source, "device");
+  assert.equal(result.expiresAt, 3_601_000);
+  assert.equal(result.refreshed, true);
   assert.equal(saved.refreshToken, "new-refresh");
 });
 
