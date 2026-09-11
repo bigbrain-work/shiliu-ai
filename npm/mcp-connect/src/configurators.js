@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { PACKAGE_NAME, SERVER_NAME } from "./constants.js";
+import { collectRuntimeDiagnostics } from "./runtime-diagnostics.js";
 
 export function stdioServerDefinition(platform = process.platform) {
   if (platform === "win32") {
@@ -16,6 +17,80 @@ export function stdioServerDefinition(platform = process.platform) {
     command: "npx",
     args: ["-y", PACKAGE_NAME, "mcp"],
   };
+}
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+export function stdioConfigurationCandidates({
+  platform = process.platform,
+  env = process.env,
+  diagnostics,
+} = {}) {
+  const runtime =
+    diagnostics || collectRuntimeDiagnostics({ platform, env });
+  const currentNpxReady = Boolean(runtime.current.npx.available);
+  const persistentNpx = runtime.persistent_path_baseline.npx;
+  const persistentNpxReady =
+    Boolean(persistentNpx.available) &&
+    (persistentNpx.path_risks || []).length === 0;
+  const warnings = [];
+  if (!currentNpxReady) {
+    warnings.push("当前 CLI 环境无法执行 npx；目标客户端仍需单独验证。");
+  }
+  if (!persistentNpxReady) {
+    warnings.push(
+      platform === "win32"
+        ? "Windows 持久 PATH 基线中的 npx 不可用或路径不稳定；这不等于目标客户端一定无法启动。"
+        : "当前 PATH 基线中的 npx 不可用或路径不稳定；这不等于目标客户端一定无法启动。",
+    );
+  }
+  const candidates = [
+    {
+      kind: "standard_npx",
+      preferred: true,
+      definition: stdioServerDefinition(platform),
+      current_environment_ready: currentNpxReady,
+      persistent_path_baseline_ready: persistentNpxReady,
+      path_risks: unique([
+        ...(runtime.current.npx.path_risks || []),
+        ...(persistentNpx.path_risks || []),
+      ]),
+      warnings,
+      tradeoffs: [],
+    },
+  ];
+
+  if (
+    (!currentNpxReady || !persistentNpxReady) &&
+    runtime.current.process_node.path &&
+    runtime.current.shiliu_entry
+  ) {
+    candidates.push({
+      kind: "absolute_current_install",
+      preferred: false,
+      definition: {
+        command: runtime.current.process_node.path,
+        args: [runtime.current.shiliu_entry, "mcp"],
+      },
+      current_environment_ready: true,
+      persistent_path_baseline_ready: false,
+      path_risks: unique([
+        ...(runtime.current.process_node.path_risks || []),
+        ...(runtime.current.shiliu_entry_risks || []),
+      ]),
+      warnings: [
+        "仅在客户端无法使用标准 npx 配置时，才考虑此备选。",
+      ],
+      tradeoffs: [
+        "运行时或应用升级后绝对路径可能失效。",
+        "配置会固定到当前已安装的 CLI 版本，不会随 npx 自动选择新版。",
+        "运行时目录变化后可能需要重新安装 CLI 并更新配置。",
+      ],
+    });
+  }
+  return { runtime, candidates };
 }
 
 export function codexArguments(platform = process.platform) {

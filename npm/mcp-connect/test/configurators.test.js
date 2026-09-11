@@ -11,6 +11,7 @@ import {
   configureCodex,
   configureCursor,
   cursorServerDefinition,
+  stdioConfigurationCandidates,
   stdioServerDefinition,
 } from "../src/configurators.js";
 import { PACKAGE_NAME, SERVER_NAME } from "../src/constants.js";
@@ -31,6 +32,33 @@ test("all generated configs use the credential-free stdio bridge", () => {
     ...windowsProxy,
   });
   assert.deepEqual(cursorServerDefinition("win32"), windowsProxy);
+});
+
+test("keeps standard npx preferred and exposes a costly absolute fallback", () => {
+  const { candidates } = stdioConfigurationCandidates({
+    platform: "win32",
+    diagnostics: {
+      current: {
+        process_node: {
+          path: "C:\\Client\\sandbox_runtime\\bases\\abcdefabcdefabcdefabcdefabcdefab\\node.exe",
+          path_risks: ["application_managed_sandbox"],
+        },
+        shiliu_entry:
+          "C:\\Client\\sandbox_runtime\\bases\\abcdefabcdefabcdefabcdefabcdefab\\node_modules\\@bigbrain-work\\mcp-connect\\bin\\shiliu.js",
+        shiliu_entry_risks: ["application_managed_sandbox"],
+        npx: { available: true, path_risks: ["application_managed_sandbox"] },
+      },
+      persistent_path_baseline: {
+        npx: { available: false, path_risks: [] },
+      },
+    },
+  });
+  assert.equal(candidates[0].kind, "standard_npx");
+  assert.equal(candidates[0].preferred, true);
+  assert.equal(candidates[1].kind, "absolute_current_install");
+  assert.equal(candidates[1].preferred, false);
+  assert.equal(candidates[1].tradeoffs.length, 3);
+  assert.match(candidates[1].tradeoffs.join(" "), /固定到当前已安装/u);
 });
 
 test("cursor merge preserves unrelated MCP servers", async () => {

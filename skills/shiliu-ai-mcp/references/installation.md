@@ -18,14 +18,17 @@ Run separately and inspect each result:
 shiliu --version
 shiliu status
 shiliu tools
+shiliu doctor --transport stdio
 ```
 
 - A missing executable is a runtime or PATH issue. Preserve the current PATH when resolving it. In Windows PowerShell, use `shiliu.cmd` when execution policy blocks the PowerShell command shim.
+- `doctor` reports current and persistent PATH baselines plus locally tested stdio candidates. It cannot see the target client's environment and cannot prove that a GUI configuration was saved or loaded. Keep standard `npx` preferred; use an absolute-path candidate only with its reported upgrade, version-pinning, and reinstall tradeoffs.
 - CLI authentication and live tool discovery verify only the CLI connection. Inspect the current Agent's MCP connection and live catalog before reporting Agent access.
 - Configuration state `generated_only` means the CLI printed a proposal but did not install it. State `written` means the target configuration was saved. When `reload_required` is true, `configured but awaiting reload` is the normal result for the current session; reconnect before requiring Agent-side tool discovery.
 - Start login only when authentication is missing or explicitly rejected. Diagnose network and client-configuration failures before changing credentials.
 - For a pending login, show only the current local QR image, then immediately repeat its single-shot `poll_command` at `poll_after_seconds`. The user only scans with WeChat; there is no phone confirmation button and the Agent must not wait for another user reply.
 - Never request or expose access tokens, refresh tokens, internal device codes, or API keys.
+- If MCP is unsupported but commands work, use `shiliu tools --json` and `shiliu call`; never create a custom JSON-RPC client or call package-internal entry files. If neither MCP nor commands work, report the client as unsupported.
 
 ## Maintenance and platform recovery
 Follow the update policy in [SKILL.md](../SKILL.md); it owns targeted `shiliu skill refresh` and cooldown. Installation does not require an additional maintenance pass. Discover tool names and schemas from the live MCP catalog.

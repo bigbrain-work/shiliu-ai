@@ -95,6 +95,8 @@ test("unknown agent JSON reports generated-only configuration", async () => {
     assert.equal(payload.status, "configuration_generated");
     assert.equal(payload.results[0].configuration_state, "generated_only");
     assert.equal(payload.results[0].config_path, null);
+    assert.equal(payload.results[0].stdio_candidates[0].kind, "standard_npx");
+    assert.equal(payload.results[0].stdio_candidates[0].preferred, true);
   } finally {
     await rm(home, { recursive: true, force: true });
   }

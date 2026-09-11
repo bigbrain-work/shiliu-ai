@@ -6,7 +6,17 @@ Use this guide only for a user-authorized installation. Follow Steps 1-6 and res
 
 ## 1. Check the environment
 
-Identify the current Agent, shell, and runtime that will launch MCP. The CLI and MCP process must share the same OS user and credential store. If the client cannot launch local stdio servers, report the limitation before installing.
+Identify the current Agent, shell, and runtime that will launch MCP. The CLI and MCP process must share the same OS user and credential store. Classify by capability, not by guessing a vendor-specific configuration file:
+
+| Layer | Client capability | Supported path |
+| --- | --- | --- |
+| A | Remote HTTP MCP with a Shiliu-supported interactive authorization flow | Use the published HTTP MCP instructions; no local Node is required. This flow is not yet offered by this guide, so do not invent a URL or OAuth procedure. |
+| B | Local stdio MCP and a supported writable configuration | Use the built-in `shiliu install` adapter. |
+| C | Local stdio MCP configured only through a GUI or an unknown format | Generate candidates, run `shiliu doctor`, and give the user a field-by-field GUI configuration. |
+| D | No MCP support, but commands and Skill instructions are available | Use `shiliu tools --json` and `shiliu call`; never build a custom JSON-RPC client. |
+| E | Neither MCP nor local command execution | Report that the current client is unsupported until Layer A is available. |
+
+Only the configuration-writing step is vendor-specific. Built-in adapters remain limited to Codex, Claude Code, and Cursor; all other clients follow the capability branches above. Do not edit Chromium/Electron LevelDB or SQLite application storage and do not infer a client capability from its implementation framework.
 
 For Skill scope, use the requested scope. Otherwise use a persistent project root, or user scope if no project exists. Avoid temporary directories.
 
@@ -17,7 +27,9 @@ node --version
 npm --version
 ```
 
-The Shiliu CLI itself supports Node.js 18.14.1 or newer. The complete Steps 1-6 flow also uses the current `skills` CLI, which requires Node.js 22.20.0 or newer. Therefore require Node.js 22.20.0 or newer for a complete installation. If Node/npm is missing or older, use the official Node.js 24 LTS installer at https://nodejs.org/en/download, reopen the terminal, and recheck. The installers below upgrade npm versions older than 8 to npm 9.9.4. Preserve the current PATH; shell changes may not persist between Agent commands.
+Layers B-D require the Shiliu CLI and Node.js 18.14.1 or newer. Installing or refreshing the Skill also uses the current `skills` CLI, which requires Node.js 22.20.0 or newer. Therefore require Node.js 22.20.0 or newer for the complete Skill-enabled flow. If Node/npm is missing or older, use the official Node.js 24 LTS installer at https://nodejs.org/en/download, reopen the terminal, and recheck. The installers below upgrade npm versions older than 8 to npm 9.9.4. Preserve the current PATH; shell changes may not persist between Agent commands.
+
+An application-bundled Node runtime is not automatically a persistent system runtime. A path under an application sandbox, temporary directory, or content-addressed hash may disappear after an application update. Prefer an official system Node installation for Layers B-D; do not silently copy an application-private absolute path into MCP configuration.
 
 Node.js 18.14.1-22.19 may be used only for CLI-only repair when the Skill is already installed and no `skills` command will run. Do not describe that limited state as a complete Agent installation.
 
@@ -43,7 +55,7 @@ Require the installer's `CLI installed.` message and verify separately:
 shiliu --version
 ```
 
-Require CLI 1.3.7 or newer. If `shiliu` is blocked by PowerShell execution policy, use `shiliu.cmd` in that PowerShell session. If the command is missing, resolve the npm global executable location without replacing the runtime's PATH. CLI installation alone does not complete MCP setup.
+Require CLI 1.3.9 or newer for the Layer C diagnostics, Layer D calls, and persisted Skill targets in this guide. Existing built-in Layer B configurations remain compatible with 1.3.7 or newer, but update before following this complete guide. If `shiliu` is blocked by PowerShell execution policy, use `shiliu.cmd` in that PowerShell session. If the command is missing, resolve the npm global executable location without replacing the runtime's PATH. CLI installation alone does not complete MCP setup.
 
 ## 3. Install Skill
 
@@ -55,15 +67,16 @@ Select only the current client. Skill installer identifiers and Shiliu CLI ident
 | Claude Code | claude-code | claude |
 | Cursor | cursor | cursor |
 
-Install the Skill with the matching `SKILL_AGENT`:
+For another client, use only a Skill identifier documented by that client or by the current `skills` CLI; never guess one. Install the Skill with that `SKILL_AGENT` and record the exact refresh target. Choose `project` unless the user requested user scope or there is no persistent project:
 
 ```text
-npx -y skills add https://bigbrain.work/shiliuAI --skill shiliu-ai-mcp -a SKILL_AGENT -y
+shiliu skill install --agent SKILL_AGENT --scope project --json
+shiliu skill install --agent SKILL_AGENT --scope user --json
 ```
 
-Add `-g` for user scope; otherwise run from the chosen project root. This website source needs neither Git nor GitHub. Record the installed Skill path and confirm the client can discover it.
+Run exactly one of those commands. For project scope, run it from the chosen project root. The CLI invokes the website Skill source, needs neither Git nor GitHub, and records the Agent, scope, root, and installation path used by future `shiliu skill refresh` calls. Read `installPath` and `refreshTargetRecorded`; confirm the client can discover that path. The `agent/` directory and `skills-lock.json` are Skill installation metadata, not MCP server configuration.
 
-If the skills CLI does not support the current client, use that client's documented Skill import mechanism when available; do not guess an identifier. A Skill failure does not prevent MCP authorization when the client can still launch local stdio MCP servers. Continue in that case and report the Skill as unavailable. If the client supports neither Skills nor local stdio MCP, stop and report the limitation.
+If the skills CLI does not support the current client, use that client's documented Skill import mechanism when available and report that automatic refresh targeting could not be recorded. A Skill failure does not prevent MCP authorization when the client can still launch local stdio MCP servers. Continue in that case and report the Skill as unavailable. If the client supports neither Skills nor local stdio MCP but can execute commands, continue through Layer D; stop only for Layer E.
 
 ## 4. Authenticate with WeChat
 
@@ -95,7 +108,9 @@ Pending does not prove a callback fault. Deleting a PNG does not revoke its serv
 
 ## 5. Configure the current Agent
 
-Use the `MCP_AGENT` value from the mapping table:
+Choose the branch established in Step 1.
+
+For Layer B, use the `MCP_AGENT` value from the mapping table:
 
 ```text
 shiliu install --agent MCP_AGENT --json
@@ -103,13 +118,28 @@ shiliu install --agent MCP_AGENT --json
 
 Configure only the current client. Built-in adapters support Codex, Claude Code, and Cursor. For another safe name, the CLI may return `configuration_generated` with credential-free stdio configuration; `generated_only` means it was not written into the client.
 
+For Layer C, run both commands separately:
+
+```text
+shiliu install --agent SAFE_CLIENT_NAME --json
+shiliu doctor --transport stdio --json
+```
+
+Keep `standard_npx` as the preferred candidate. If diagnostics also return `absolute_current_install`, present it only as a fallback and preserve all reported tradeoffs: the path may fail after a runtime/application update, it pins the installed CLI version, and it may require reinstalling the CLI and updating the configuration. `doctor` tests this machine's candidate command, not the target client's process environment.
+
+For a GUI, provide these separate fields: server name `shiliu_mcp`; transport `STDIO`; command from the chosen candidate; each `args` value as a separate ordered argument; environment variables empty. Do not add extra quote characters around paths with spaces. The user must save the GUI configuration; do not edit opaque application databases.
+
+For Layer D, do not configure MCP. Use `shiliu tools --json` to read live schemas and `shiliu call TOOL --args-file INPUT.json`. Use `--dry-run` for schema validation without a business call, and use optional `--out RESULT.json` when a large paid response should remain available locally. Do not invoke package-internal `bin/shiliu.js` paths and do not implement JSON-RPC manually.
+
+For Layer E, stop and report unsupported. Do not present a CLI command the client cannot execute.
+
 Inspect `configuration_state`, `config_path`, and `reload_required`. Preserve unrelated settings. Reload or reconnect the client when required. When `reload_required` is true, `configured but awaiting reload` is the normal result for the current session; do not require that same session to discover the newly written MCP connection, and do not report it as `Agent connected` yet. Do not report Agent access while configuration is only generated.
 
 On Windows, keep the generated `cmd /d /s /c npx ... mcp` stdio definition. Do not replace it with `shiliu.ps1 mcp`; npm's PowerShell wrapper may buffer piped input and is not a reliable duplex MCP transport.
 
 ## 6. Verify and report
 
-Run separately:
+For Layers B and C, run separately:
 
 ```text
 shiliu status
@@ -117,6 +147,8 @@ shiliu tools
 ```
 
 Require authenticated CLI connectivity and a successful live `tools/list`. When no reload is pending, also confirm that the current Agent has loaded its MCP connection and can discover the live tools. When a reload is required, report `configured but awaiting reload` as the expected installation result and tell the user to reload or reconnect the client before Agent-side discovery can be verified. Do not assume a fixed tool count or run billable business tools solely for installation testing.
+
+For Layer D, successful `shiliu status`, `shiliu tools --json`, and a non-billable `shiliu call TOOL --dry-run` establish `CLI ready`; they do not establish an MCP connection. For Layer C, a successful `doctor` establishes `stdio_launch_verified` only on this machine; it does not establish `Agent connected`.
 
 Report the CLI version, Skill path and scope, configuration state and location, reload state, CLI connection result, Agent connection result, and discovered tool names. Distinguish `CLI ready`, `configured but awaiting reload`, and `Agent connected`. If Agent discovery cannot be verified, say so. Continue the original task using only capabilities actually available.
 
