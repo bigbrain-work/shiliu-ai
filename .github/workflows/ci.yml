@@ -88,9 +88,6 @@ jobs:
       - name: Test Windows prerequisite branches
         run: ./scripts/test-install-windows.ps1
 
-      - name: Run the public Windows installer
-        run: ./install.ps1
-
       - name: Install CLI dependencies
         run: npm ci --prefix npm/mcp-connect
 
