@@ -130,7 +130,7 @@ if ($install.ExitCode -ne 0) {
 
 $shiliuCommand = Resolve-NativeCommand @('shiliu.cmd', 'shiliu') 'The shiliu command is not on PATH. Open a new terminal and retry.'
 $shiliuVersion = Invoke-NativeVersion $shiliuCommand @('--version') 'shiliu --version returned a non-zero exit code. CLI installation could not be verified.'
-Assert-MinimumVersion $shiliuVersion '1.3.7' 'Shiliu AI CLI'
+Assert-MinimumVersion $shiliuVersion '1.3.9' 'Shiliu AI CLI'
 
 Write-Host "CLI installed. Version: $shiliuVersion"
 Write-Host 'Continue with Step 3 (Install Skill) in https://bigbrain.work/shiliuAI/install.txt'

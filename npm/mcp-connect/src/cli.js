@@ -4,7 +4,10 @@ import { access } from "node:fs/promises";
 
 import { resolveAuthorization } from "./authorization.js";
 import { parseCliArguments } from "./arguments.js";
-import { configureAgent, stdioServerDefinition } from "./configurators.js";
+import {
+  configureAgent,
+  stdioConfigurationCandidates,
+} from "./configurators.js";
 import {
   API_KEY_ENV,
   AUTH_URL,
@@ -36,8 +39,10 @@ import {
   validateMcpUrl,
 } from "./security.js";
 import { printStatus, printTools, probeMcp } from "./status.js";
-import { printSkillRefresh } from "./skill-refresh.js";
+import { printSkillInstall, printSkillRefresh } from "./skill-refresh.js";
 import { PendingLoginStore, TokenStore } from "./token-store.js";
+import { printDoctor } from "./doctor.js";
+import { readToolArguments, runToolCall } from "./tool-call.js";
 import { printUpdateStatus } from "./updater.js";
 
 function printHelp() {
@@ -50,6 +55,10 @@ function printHelp() {
   shiliu install [--agent <name>]
   shiliu status [--json]
   shiliu tools [--json]
+  shiliu doctor [--transport stdio] [--dry-run] [--json]
+  shiliu call <tool> [--args-stdin | --args-file <path> | --args <json>] [--dry-run]
+  shiliu call <tool> --args-file <path> --out <path> [--force]
+  shiliu skill install --agent <name> [--scope project|user] [--json]
   shiliu skill refresh [--force] [--json]
   shiliu update
   shiliu logout
@@ -69,9 +78,15 @@ function printHelp() {
       --legacy-api-key 使用旧 API Key 兼容登录
       --no-wait       创建登录会话后立即返回
       --wait          等待指定登录会话完成
-      --force         忽略24小时冷却并立即检查石榴 Skill
+      --force         强制刷新 Skill，或显式覆盖 call --out 文件
+      --transport <type> doctor 要验证的传输方式（当前仅 stdio）
+      --args-stdin     从标准输入读取工具参数 JSON（推荐）
+      --args-file <path> 从文件读取工具参数 JSON（推荐）
+      --args <json>   内联工具参数 JSON（仅适合简单参数）
+      --out <path>    将完整工具结果安全保存到文件
+      --scope <scope> Skill 安装范围：project 或 user
       --session <id>  指定待继续的登录会话
-      --json          以 JSON 输出 status/tools
+      --json          输出机器可读 JSON
   -h, --help          显示帮助
   -v, --version       显示版本
 
@@ -89,9 +104,11 @@ function printGenericInstructions(
   agent,
   { dryRun = false, json = false } = {},
 ) {
+  const { runtime, candidates } = stdioConfigurationCandidates();
+  const standard = candidates.find((candidate) => candidate.preferred);
   const config = {
     mcpServers: {
-      [SERVER_NAME]: stdioServerDefinition(),
+      [SERVER_NAME]: standard.definition,
     },
   };
   const result = {
@@ -100,13 +117,26 @@ function printGenericInstructions(
     config_path: null,
     reload_required: false,
     config,
+    runtime_state: runtime.state,
+    stdio_candidates: candidates,
   };
-  if (!json) console.log(`暂未内置 ${agent} 的自动配置适配器。请在该 Agent 中添加下面的标准 stdio MCP 配置：
+  if (!json) {
+    const alternatives = candidates
+      .filter((candidate) => !candidate.preferred)
+      .map(
+        (candidate) => `\n备选 ${candidate.kind}：\n${JSON.stringify(candidate.definition, null, 2)}\n代价：\n- ${candidate.tradeoffs.join("\n- ")}`,
+      )
+      .join("\n");
+    console.log(`暂未内置 ${agent} 的自动配置适配器。请在该 Agent 中添加下面的标准 stdio MCP 配置：
 
 ${JSON.stringify(config, null, 2)}
 
+GUI 字段：服务器名称=${SERVER_NAME}；传输类型=STDIO；命令=${standard.definition.command}；参数按数组顺序逐项填写；环境变量留空。命令与参数分开填写，不要给带空格的路径额外添加引号。
+${standard.warnings.length > 0 ? `\n诊断提示：\n- ${standard.warnings.join("\n- ")}\n` : ""}${alternatives}
+
 桥接器连接 ${MCP_URL}，并从本机凭据存储读取授权信息。
-${dryRun ? "演练模式没有保存凭据。" : "Agent 配置中不包含真实凭据。"} 请勿将凭据写入项目代码或提交到 Git。`);
+${dryRun ? "演练模式没有保存凭据。" : "Agent 配置中不包含真实凭据。"} 请勿将凭据写入项目代码或提交到 Git。配置后运行 shiliu doctor；它只验证本机候选启动链路，不能证明客户端已经加载连接。`);
+  }
   return result;
 }
 
@@ -627,11 +657,23 @@ export async function runCli(argv = process.argv.slice(2)) {
 
   const home = path.resolve(options.home || os.homedir());
   if (options.command === "skill") {
-    await printSkillRefresh({
-      home,
-      force: options.force,
-      json: options.json,
-    });
+    if (options.subcommand === "install") {
+      await printSkillInstall({
+        home,
+        cwd: process.cwd(),
+        agent: options.agent,
+        scope: options.skillScope,
+        dryRun: options.dryRun,
+        json: options.json,
+      });
+    } else {
+      await printSkillRefresh({
+        home,
+        cwd: process.cwd(),
+        force: options.force,
+        json: options.json,
+      });
+    }
     return;
   }
   const url = validateMcpUrl(options.url || MCP_URL, {
@@ -693,6 +735,41 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (options.command === "tools") {
     await printTools({ home, url, authUrl, json: options.json });
+    return;
+  }
+  if (options.command === "doctor") {
+    const report = await printDoctor({
+      dryRun: options.dryRun,
+      platform: process.platform,
+      env: process.env,
+      json: options.json,
+    });
+    if (report.stdio_launch.attempted && !report.stdio_launch.ok) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+  if (options.command === "call") {
+    const argumentsValue = await readToolArguments({
+      argumentsJson: options.argumentsJson,
+      argumentsFile: options.argumentsFile,
+      argumentsStdin: options.argumentsStdin,
+    });
+    const result = await runToolCall({
+      toolName: options.toolName,
+      argumentsValue,
+      dryRun: options.dryRun,
+      outputPath: options.outputPath,
+      force: options.force,
+      home,
+      platform: process.platform,
+      env: process.env,
+      url,
+      authUrl,
+      tokenStore,
+    });
+    printJson(result);
+    if (result?.isError || result?.is_error) process.exitCode = 1;
     return;
   }
   if (options.command === "update") {

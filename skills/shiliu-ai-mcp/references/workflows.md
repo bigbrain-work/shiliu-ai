@@ -20,6 +20,8 @@ Read [web-search.md](web-search.md), then call the live `web_search` tool with t
 3. If more results are needed, copy the continuation cursor exactly from the response into the cursor field accepted by the live schema.
 4. Stop when the service reports no more data, no cursor is returned, or the user's requested amount is reached.
 
+If one paid page contains more records than the user asked to see, report the retrieved count and displayed count separately. Preserve the complete response in current context or with optional `shiliu call --out` when local files are available. Reuse preserved records without another paid call; if they are no longer accessible, warn that re-querying may charge again and obtain approval first.
+
 Never reuse a cursor across authors, platforms, filters, or accounts.
 
 ## Video or audio text extraction

@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  installShiliuSkill,
   refreshShiliuSkill,
   runSkillUpdate,
   SKILL_REFRESH_INTERVAL_MS,
@@ -27,7 +28,7 @@ test("uses cmd.exe to launch npx.cmd on Windows", () => {
   assert.deepEqual(invocation.args.slice(0, 3), ["/d", "/s", "/c"]);
   assert.equal(
     invocation.args[3],
-    `npx.cmd -y skills add ${SHILIU_SKILL_SOURCE} -y`,
+    `npx.cmd -y skills add ${SHILIU_SKILL_SOURCE} --skill shiliu-ai-mcp -y`,
   );
   assert.doesNotMatch(invocation.args[3], /github|\bgit\b/iu);
   assert.equal(invocation.options.shell, false);
@@ -51,10 +52,144 @@ test("uses the website skill source without Git on POSIX", () => {
     "skills",
     "add",
     SHILIU_SKILL_SOURCE,
+    "--skill",
+    "shiliu-ai-mcp",
     "-y",
   ]);
   assert.doesNotMatch(invocation.args.join(" "), /github|\bgit\b/iu);
   assert.equal(invocation.options.shell, false);
+});
+
+test("records the exact Skill install target and reuses it for refresh", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "shiliu-skill-target-"));
+  const project = path.join(home, "project");
+  const invocations = [];
+  const runUpdate = async (options) => {
+    invocations.push(options);
+  };
+  const now = Date.UTC(2026, 8, 8, 0, 0, 0);
+  try {
+    const installed = await installShiliuSkill({
+      home,
+      cwd: project,
+      agent: "claude-code",
+      scope: "project",
+      now,
+      runUpdate,
+      verifyInstall: async () => true,
+    });
+    assert.equal(installed.scope, "project");
+    assert.equal(
+      installed.installPath,
+      path.join(project, ".agents", "skills", "shiliu-ai-mcp"),
+    );
+    assert.deepEqual(invocations[0], {
+      cwd: path.resolve(project),
+      agent: "claude-code",
+      scope: "project",
+    });
+
+    await refreshShiliuSkill({
+      home,
+      cwd: path.join(project, "nested"),
+      now: now + SKILL_REFRESH_INTERVAL_MS,
+      runUpdate,
+      verifyInstall: async () => true,
+    });
+    assert.deepEqual(invocations[1], {
+      cwd: path.resolve(project),
+      agent: "claude-code",
+      scope: "project",
+    });
+    const stored = JSON.parse(
+      await readFile(path.join(home, ".shiliu-ai", "skill-refresh.json")),
+    );
+    assert.deepEqual(stored.scopes[path.resolve(project)].target.agents, [
+      "claude-code",
+    ]);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("a user-scope Skill target follows the user across working directories", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "shiliu-skill-user-"));
+  const invocations = [];
+  const runUpdate = async (options) => invocations.push(options);
+  const now = Date.UTC(2026, 8, 8, 0, 0, 0);
+  try {
+    await installShiliuSkill({
+      home,
+      cwd: path.join(home, "first"),
+      agent: "codex",
+      scope: "user",
+      now,
+      runUpdate,
+      verifyInstall: async () => true,
+    });
+    await refreshShiliuSkill({
+      home,
+      cwd: path.join(home, "second"),
+      now: now + SKILL_REFRESH_INTERVAL_MS,
+      runUpdate,
+      verifyInstall: async () => true,
+    });
+    assert.deepEqual(invocations[1], {
+      cwd: path.resolve(home),
+      agent: "codex",
+      scope: "user",
+    });
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("Skill install dry-run neither runs the installer nor records state", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "shiliu-skill-dry-"));
+  let calls = 0;
+  try {
+    const result = await installShiliuSkill({
+      home,
+      cwd: path.join(home, "project"),
+      agent: "codex",
+      scope: "project",
+      dryRun: true,
+      runUpdate: async () => {
+        calls += 1;
+      },
+    });
+    assert.equal(result.status, "dry_run");
+    assert.equal(result.refreshTargetRecorded, false);
+    assert.equal(calls, 0);
+    await assert.rejects(
+      readFile(path.join(home, ".shiliu-ai", "skill-refresh.json")),
+      { code: "ENOENT" },
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("does not record a successful target when the installed Skill is missing", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "shiliu-skill-missing-"));
+  try {
+    await assert.rejects(
+      installShiliuSkill({
+        home,
+        cwd: path.join(home, "project"),
+        agent: "codex",
+        runUpdate: async () => {},
+        verifyInstall: async () => false,
+      }),
+      /未在预期位置找到/u,
+    );
+    await assert.rejects(
+      readFile(path.join(home, ".shiliu-ai", "skill-refresh.json")),
+      { code: "ENOENT" },
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 test("checks once per scope during the 24 hour interval", async () => {

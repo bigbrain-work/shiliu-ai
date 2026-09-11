@@ -57,7 +57,7 @@ npm install --global @bigbrain-work/mcp-connect@latest --prefer-online || fail "
 
 command -v shiliu >/dev/null 2>&1 || fail "The shiliu command is not on PATH. Open a new terminal and retry."
 shiliu_version=$(shiliu --version) || fail "shiliu --version returned a non-zero exit code. CLI installation could not be verified."
-require_minimum_version "$shiliu_version" 1 3 7 "Shiliu AI CLI"
+require_minimum_version "$shiliu_version" 1 3 9 "Shiliu AI CLI"
 
 printf '%s\n' "CLI installed. Version: $shiliu_version"
 printf '%s\n' "Continue with Step 3 (Install Skill) in https://bigbrain.work/shiliuAI/install.txt"

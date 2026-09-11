@@ -24,8 +24,24 @@ npx -y @bigbrain-work/mcp-connect status
 # 显示服务实时返回的工具
 npx -y @bigbrain-work/mcp-connect tools
 
+# 诊断本机 stdio 启动条件，并实际完成一次 MCP 握手和 tools/list
+npx -y @bigbrain-work/mcp-connect doctor
+
+# 只检查运行时和候选配置，不启动 MCP
+npx -y @bigbrain-work/mcp-connect doctor --dry-run --json
+
+# 使用实时工具目录校验参数后调用工具
+shiliu call <工具名> --args-file <参数.json>
+
+# 大响应可选写入文件；默认不覆盖，显式 --force 才允许覆盖
+shiliu call <工具名> --args-file <参数.json> --out <结果.json>
+
 # 每个项目最多每24小时从石榴官网定向刷新一次石榴 Skill
 shiliu skill refresh
+
+# 首次安装时记录准确的客户端和范围，后续 refresh 复用该目标
+shiliu skill install --agent codex --scope project
+shiliu skill install --agent claude-code --scope user
 
 # 人工忽略冷却并立即重试
 shiliu skill refresh --force
@@ -46,9 +62,11 @@ npx -y @bigbrain-work/mcp-connect logout
 npx -y @bigbrain-work/mcp-connect install --agent openclaw
 ```
 
-对未内置适配器的 Agent，CLI 会输出标准 stdio MCP 配置。名称只用于提示，不要求我们枚举所有 Agent。
+对未内置适配器的 Agent，CLI 会输出标准 stdio MCP 配置和本机诊断结果。名称只用于提示，不要求我们枚举所有 Agent。标准 `npx` 配置始终是首选；当当前或持久 PATH 不可靠时，CLI 才额外提供绝对路径备选，并明确提示版本固定和应用升级后路径失效等代价，不会静默替换配置。
 
 Windows 上请使用 CLI 生成的 `cmd /d /s /c npx ... mcp` 配置，不要把 npm 自动生成的 `shiliu.ps1 mcp` 注册为 MCP command；PowerShell 包装器不适合作为长期双向 stdio 通道。MCP 进程遇到登录令牌过期或用户重新扫码后返回的 401，会自动重读系统凭据并重连一次，无需把令牌写入 Agent 配置。
+
+`doctor` 只能验证当前机器上的运行时和 stdio 启动链路，不能证明某个 Agent 已经保存、重载或连接 MCP。`call --dry-run` 只读取实时工具目录并校验参数结构，不执行服务端业务调用。`call --out` 成功时会返回绝对路径、字节数和 SHA-256；写入失败不会留下半成品文件。
 
 ## 凭据安全
 

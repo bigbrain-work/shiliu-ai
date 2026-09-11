@@ -6,6 +6,8 @@ const COMMANDS = new Set([
   "logout",
   "status",
   "tools",
+  "doctor",
+  "call",
   "mcp",
   "proxy",
   "skill",
@@ -55,6 +57,25 @@ export function parseCliArguments(args) {
         type: "boolean",
         default: false,
       },
+      transport: {
+        type: "string",
+      },
+      args: {
+        type: "string",
+      },
+      "args-file": {
+        type: "string",
+      },
+      "args-stdin": {
+        type: "boolean",
+        default: false,
+      },
+      out: {
+        type: "string",
+      },
+      scope: {
+        type: "string",
+      },
       session: {
         type: "string",
       },
@@ -82,11 +103,12 @@ export function parseCliArguments(args) {
   const subcommand = parsed.positionals[1];
   const validSubcommand =
     (command === "login" && subcommand === "poll") ||
-    (command === "skill" && subcommand === "refresh");
+    (command === "skill" && ["install", "refresh"].includes(subcommand)) ||
+    (command === "call" && Boolean(subcommand));
   if (
     parsed.positionals.length > 2 ||
     (subcommand && !validSubcommand) ||
-    (command === "skill" && subcommand !== "refresh")
+    (command === "skill" && !["install", "refresh"].includes(subcommand))
   ) {
     throw new Error(`无法识别的参数：${parsed.positionals.slice(1).join(" ")}`);
   }
@@ -98,6 +120,55 @@ export function parseCliArguments(args) {
   const session = parsed.values.session;
   if (session && !/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/u.test(session)) {
     throw new Error("登录会话编号格式无效");
+  }
+
+  const argumentSources = [
+    parsed.values.args !== undefined,
+    parsed.values["args-file"] !== undefined,
+    parsed.values["args-stdin"],
+  ].filter(Boolean).length;
+  if (argumentSources > 1) {
+    throw new Error("--args、--args-file 和 --args-stdin 只能选择一种");
+  }
+  if (command === "call" && !subcommand) {
+    throw new Error("call 需要指定工具名称");
+  }
+  if (command === "doctor") {
+    const transport = parsed.values.transport || "stdio";
+    if (transport !== "stdio") {
+      throw new Error("doctor 当前仅支持 --transport stdio");
+    }
+  }
+  if (command !== "doctor" && parsed.values.transport !== undefined) {
+    throw new Error("--transport 仅适用于 shiliu doctor");
+  }
+  if (command !== "call" && argumentSources > 0) {
+    throw new Error("参数输入选项仅适用于 shiliu call");
+  }
+  if (command !== "call" && parsed.values.out !== undefined) {
+    throw new Error("--out 仅适用于 shiliu call");
+  }
+  if (command === "call" && parsed.values["dry-run"] && parsed.values.out) {
+    throw new Error("--dry-run 不会产生业务结果，不能同时使用 --out");
+  }
+  if (command === "call" && parsed.values.force && !parsed.values.out) {
+    throw new Error("shiliu call 的 --force 仅能与 --out 一起使用");
+  }
+  const skillScope = parsed.values.scope;
+  if (skillScope && !["project", "user"].includes(skillScope)) {
+    throw new Error("Skill 安装范围只能是 project 或 user");
+  }
+  if (
+    parsed.values.scope !== undefined &&
+    !(command === "skill" && subcommand === "install")
+  ) {
+    throw new Error("--scope 仅适用于 shiliu skill install");
+  }
+  if (command === "skill" && subcommand === "install" && !agent) {
+    throw new Error("shiliu skill install 需要 --agent <Skill客户端标识>");
+  }
+  if (command === "skill" && subcommand === "refresh" && agent) {
+    throw new Error("Skill 刷新会使用已记录目标，不接受 --agent");
   }
 
   return {
@@ -113,6 +184,13 @@ export function parseCliArguments(args) {
     noWait: parsed.values["no-wait"],
     wait: parsed.values.wait,
     force: parsed.values.force,
+    transport: parsed.values.transport || "stdio",
+    toolName: command === "call" ? subcommand : undefined,
+    argumentsJson: parsed.values.args,
+    argumentsFile: parsed.values["args-file"],
+    argumentsStdin: parsed.values["args-stdin"],
+    outputPath: parsed.values.out,
+    skillScope: skillScope || "project",
     session,
     json: parsed.values.json,
     help: parsed.values.help,
