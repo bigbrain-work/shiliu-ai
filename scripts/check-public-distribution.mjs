@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyPublicSkillArchive } from "./public-skill-integrity.mjs";
 
 import { archiveFileName, skillName } from "./build-skill-distribution.mjs";
 import { buildPublicSiteAssets } from "./build-public-site-assets.mjs";
@@ -75,18 +76,16 @@ export async function checkPublicDistribution({
     }
 
     const discoveryBase = ".well-known/agent-skills";
-    await verifyPublicFile(
-      publicBaseUrl,
-      `${discoveryBase}/index.json`,
-      built.indexPath,
-      "Public Skill discovery index",
-    );
-    await verifyPublicFile(
-      publicBaseUrl,
-      `${discoveryBase}/${archiveFileName}`,
-      built.archivePath,
-      "Public Skill archive",
-    );
+    const [publicIndex, publicArchive, expectedIndex, expectedArchive] =
+      await Promise.all([
+        fetchBytes(`${publicBaseUrl}/${discoveryBase}/index.json`),
+        fetchBytes(`${publicBaseUrl}/${discoveryBase}/${archiveFileName}`),
+        readFile(built.indexPath),
+        readFile(built.archivePath),
+      ]);
+    const publicDigest = verifyPublicSkillArchive({
+      publicIndex, publicArchive, expectedIndex, expectedArchive,
+    });
     for (const relativePath of verified.files) {
       await verifyPublicFile(
         publicBaseUrl,
@@ -118,7 +117,7 @@ export async function checkPublicDistribution({
     }
 
     console.log(
-      `Public Shiliu distribution is consistent: CLI ${packageMetadata.version}, ${verified.files.length} Skill files, ${verified.digest}.`,
+      `Public Shiliu distribution is consistent: CLI ${packageMetadata.version}, ${verified.files.length} Skill files, ${publicDigest}.`,
     );
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });

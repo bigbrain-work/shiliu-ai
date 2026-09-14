@@ -16,6 +16,13 @@ export const archiveFileName = `${skillName}.tar.gz`;
 export const discoverySchema =
   "https://schemas.agentskills.io/discovery/0.2.0/schema.json";
 
+export function compressSkillArchive(tarBytes) {
+  const archive = gzipSync(tarBytes, { level: 9, mtime: 0 });
+  // RFC 1952: OS=255 (unknown), independent of the build host.
+  archive[9] = 255;
+  return archive;
+}
+
 const textExtensions = new Set([
   ".css",
   ".html",
@@ -182,7 +189,7 @@ export async function buildSkillDistribution(outputDirectory) {
   }
 
   const tarBytes = createTarArchive(files);
-  const archiveBytes = gzipSync(tarBytes, { level: 9, mtime: 0 });
+  const archiveBytes = compressSkillArchive(tarBytes);
   const digest = createHash("sha256").update(archiveBytes).digest("hex");
   await writeFile(archivePath, archiveBytes);
 
