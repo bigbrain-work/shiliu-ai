@@ -26,6 +26,9 @@ jobs:
       - name: Test CLI
         run: npm test --prefix npm/mcp-connect
 
+      - name: Test public distribution integrity
+        run: node --test scripts/public-skill-integrity.test.mjs
+
       - name: Verify package contents
         run: npm run pack:check --prefix npm/mcp-connect
 
@@ -93,6 +96,9 @@ jobs:
 
       - name: Test CLI on Windows
         run: npm test --prefix npm/mcp-connect
+
+      - name: Test public distribution integrity on Windows
+        run: node --test scripts/public-skill-integrity.test.mjs
 
       - name: Verify package contents
         run: npm run pack:check --prefix npm/mcp-connect
