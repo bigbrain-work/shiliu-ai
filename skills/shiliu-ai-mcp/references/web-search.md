@@ -7,7 +7,7 @@ Search the public web and return structured results.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `query` | string \| object | yes | The search query. `hybrid` requires an object carrying both `cn` and `global`. |
-| `engine` | `cn` \| `global` \| `hybrid` | no | Which engines to search. Defaults to `cn`. |
+| `engine` | `cn` \| `global` \| `hybrid` | no | Which engine to search. Pass it explicitly. If omitted, the compatibility fallback is `global`. |
 | `limit` | integer | no | Max web results per engine, 1–10. Defaults to 10, so `hybrid` can return up to `2 × limit`. Non-integers and values outside 1–10 are rejected with `reason: "invalid_limit"`. |
 
 ### Engines
@@ -17,6 +17,10 @@ Search the public web and return structured results.
 | `cn` | Chinese-mainland search. Chinese and English queries both accepted. |
 | `global` | Global search, with no geographic exclusion — mainland Chinese sites can appear here too. Query language shifts ranking and recall rather than filtering. English queries generally produce better results than Chinese queries. |
 | `hybrid` | Both engines, queried independently with a separate query each. |
+
+Always pass `engine` explicitly: use `cn` for Chinese-mainland search, `global`
+for global search, and `hybrid` only when both scopes are required. Do not rely
+on the compatibility fallback.
 
 Spacing in Chinese queries is optional. Separate keyword groups with spaces to
 control the grouping, or send the phrase unspaced and it is segmented
