@@ -22,9 +22,9 @@ Always pass `engine` explicitly: use `cn` for Chinese-mainland search, `global`
 for global search, and `hybrid` only when both scopes are required. Do not rely
 on the compatibility fallback.
 
-Spacing in Chinese queries is optional. Separate keyword groups with spaces to
-control the grouping, or send the phrase unspaced and it is segmented
-server-side. Groups you separate yourself are kept as you wrote them.
+When using Chinese with `global`, preferably separate the query into multiple
+keyword groups with spaces. If no spaces are provided, the server segments the
+query automatically. Groups you separate yourself are kept as you wrote them.
 
 ### `query` and `engine`
 
