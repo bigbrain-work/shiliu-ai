@@ -45,9 +45,10 @@ Agent 或其他非阻塞环境应运行 `shiliu login --no-wait --json`。二维
 ## 发布状态
 
 - 公共仓库：`bigbrain-work/shiliu-ai`
-- npm：`@bigbrain-work/mcp-connect@1.3.8`
+- npm：`@bigbrain-work/mcp-connect@1.3.10`
 - 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
 - Windows 安装问题与发布验收：`docs/windows-install-acceptance.md`
+- CLI 与官网安装文件发布流程：`RELEASE_CLI.md`
 
 ## 更新边界
 

@@ -31,7 +31,15 @@
 | 直接用 npm 生成的 `shiliu.ps1 mcp` 启动后不响应 `initialize` | PowerShell 包装器会把管道输入转交给 Node.js，可能等待输入结束，不适合长期双向 MCP stdio | Agent 配置在 Windows 固定使用 `cmd /d /s /c npx -y @bigbrain-work/mcp-connect mcp`；不要把 `shiliu.ps1` 注册为 MCP command | Windows 集成测试必须通过同样的 `cmd` 配置完成 initialize、tools/list 和 tools/call |
 | Agent 重新扫码后，已经运行的 MCP 仍使用旧令牌并持续返回 401 | stdio 代理只在启动时读取一次凭据，且短期 access token 到期后不会刷新 | 401 时重新读取系统凭据、按需刷新并重连一次；并发请求共享重连，刷新令牌轮换冲突时短暂重读凭据 | 单测覆盖单次恢复、并发 401、轮换竞争与非认证错误；人工验收不重启 Agent 重新扫码后继续调用 |
 
-## Windows 发布门槛
+## 2026-10-07 MCP 连接与诊断回归
+
+- 未登录时先完成本地 stdio initialize，提供 `shiliu_login`、`shiliu_login_poll`、`shiliu_connection_status`；不等待远程连接或凭据库。
+- 登录后发现业务工具并发送工具列表变更通知；不支持通知的客户端需要刷新或重连。
+- 配置、运行环境和内部错误分别退出 2、3、4；正常关闭为 0。未登录、授权失效、凭据库不可用和网络失败属于可恢复状态，不退出 MCP。
+- `shiliu doctor` 显示安全错误分类、阶段和退出码；诊断写入用户目录，不记录凭据、原始异常或请求内容。
+- 回归覆盖 Windows cmd stdio、匿名握手、登录后工具发现、并发连接、撤销授权、配置/依赖/异常退出、日志轮转及断管。
+
+## Windows 发布门槛（执行项）
 
 每个 PR 必须在 `windows-latest` 上完成以下检查：
 

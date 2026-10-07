@@ -17,7 +17,12 @@ export async function connectRemote({ token, apiKey, url }) {
       },
     },
   });
-  await client.connect(transport);
+  try {
+    await client.connect(transport, { timeout: 15000 });
+  } catch (error) {
+    await client.close().catch(() => {});
+    throw error;
+  }
   return client;
 }
 

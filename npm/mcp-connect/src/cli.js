@@ -44,6 +44,7 @@ import { PendingLoginStore, TokenStore } from "./token-store.js";
 import { printDoctor } from "./doctor.js";
 import { readToolArguments, runToolCall } from "./tool-call.js";
 import { printUpdateStatus } from "./updater.js";
+import { McpDiagnosticError } from "./mcp-diagnostics.js";
 
 function printHelp() {
   console.log(`${PACKAGE_NAME} ${PACKAGE_VERSION}
@@ -648,7 +649,9 @@ export function formatCliError(error) {
 }
 
 export async function runCli(argv = process.argv.slice(2)) {
-  const options = parseCliArguments(argv);
+  let options;
+  try { options = parseCliArguments(argv); }
+  catch (error) { throw new McpDiagnosticError("CONFIG_INVALID", "argument_parse", error.message, error); }
   if (options.help) return printHelp();
   if (options.version) {
     console.log(PACKAGE_VERSION);
@@ -685,7 +688,7 @@ export async function runCli(argv = process.argv.slice(2)) {
   const tokenStore = new TokenStore();
   const pendingLoginStore = new PendingLoginStore();
   if (options.command === "mcp" || options.command === "proxy") {
-    await runProxy({ home, url, authUrl });
+    await runProxy({ home, url, authUrl, allowLocalhost: options.allowLocalhost });
     return;
   }
   if (options.command === "login") {

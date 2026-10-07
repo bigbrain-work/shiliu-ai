@@ -1,4 +1,5 @@
 import { AUTH_URL, MCP_URL } from "./constants.js";
+import { McpDiagnosticError } from "./mcp-diagnostics.js";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const USER_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/u;
@@ -30,7 +31,7 @@ function validateServiceUrl(value, expectedValue, label, { allowLocalhost }) {
     actual = normalizeEndpoint(value);
     expected = normalizeEndpoint(expectedValue);
   } catch (error) {
-    throw new Error(`${label}无效：${error.message}`);
+    throw new McpDiagnosticError("CONFIG_INVALID", "endpoint_validation", `${label}无效：${error.message}`, error);
   }
 
   if (isSameEndpoint(actual, expected)) return actual.toString();
@@ -42,7 +43,8 @@ function validateServiceUrl(value, expectedValue, label, { allowLocalhost }) {
     return actual.toString();
   }
 
-  throw new Error(
+  throw new McpDiagnosticError(
+    "CONFIG_INVALID", "endpoint_validation",
     `${label}仅允许石榴 AI 正式地址；本机测试请使用回环地址并显式添加 --allow-localhost`,
   );
 }

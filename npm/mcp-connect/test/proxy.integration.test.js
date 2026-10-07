@@ -18,6 +18,7 @@ import {
 
 import { API_KEY_ENV } from "../src/constants.js";
 import { stdioServerDefinition } from "../src/configurators.js";
+import { LOGIN_TOOLS } from "../src/proxy.js";
 
 async function readJsonBody(request) {
   const chunks = [];
@@ -129,7 +130,7 @@ test(
       const tools = await client.listTools();
       assert.deepEqual(
         tools.tools.map((tool) => tool.name),
-        ["echo"],
+        [...LOGIN_TOOLS.map((tool) => tool.name), "echo"],
       );
       const result = await client.callTool({
         name: "echo",
@@ -195,7 +196,7 @@ test(
         );
       }
       const tools = await client.listTools();
-      assert.deepEqual(tools.tools.map((tool) => tool.name), ["echo"]);
+      assert.deepEqual(tools.tools.map((tool) => tool.name), [...LOGIN_TOOLS.map((tool) => tool.name), "echo"]);
       const result = await client.callTool({
         name: "echo",
         arguments: { value: "windows-cmd" },

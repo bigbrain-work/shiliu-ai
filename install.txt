@@ -55,7 +55,7 @@ Require the installer's `CLI installed.` message and verify separately:
 shiliu --version
 ```
 
-Require CLI 1.3.9 or newer for the Layer C diagnostics, Layer D calls, and persisted Skill targets in this guide. Existing built-in Layer B configurations remain compatible with 1.3.7 or newer, but update before following this complete guide. If `shiliu` is blocked by PowerShell execution policy, use `shiliu.cmd` in that PowerShell session. If the command is missing, resolve the npm global executable location without replacing the runtime's PATH. CLI installation alone does not complete MCP setup.
+Require CLI 1.3.10 or newer for the Layer C diagnostics, Layer D calls, and persisted Skill targets in this guide. Existing built-in Layer B configurations remain compatible with 1.3.7 or newer, but update before following this complete guide. If `shiliu` is blocked by PowerShell execution policy, use `shiliu.cmd` in that PowerShell session. If the command is missing, resolve the npm global executable location without replacing the runtime's PATH. CLI installation alone does not complete MCP setup.
 
 ## 3. Install Skill
 
@@ -79,6 +79,10 @@ Run exactly one of those commands. For project scope, run it from the chosen pro
 If the skills CLI does not support the current client, use that client's documented Skill import mechanism when available and report that automatic refresh targeting could not be recorded. A Skill failure does not prevent MCP authorization when the client can still launch local stdio MCP servers. Continue in that case and report the Skill as unavailable. If the client supports neither Skills nor local stdio MCP but can execute commands, continue through Layer D; stop only for Layer E.
 
 ## 4. Authenticate with WeChat
+
+For local stdio MCP (Layers B/C), connection can also come before login: configure the current Agent using section 5, then use the bridge's `shiliu_login` tool to display the QR and `shiliu_login_poll` with the returned `login_session_id` as `session`. Poll at the returned interval until success. The bridge completes initialize without credentials and initially exposes three login/status tools. Successful MCP initialize is not proof of login or a remote business connection. Never block QR login on the availability of business tools. The CLI flow below remains supported.
+
+After login, the bridge announces `notifications/tools/list_changed` and adds the remote business tools. Refresh tools/list; if the client does not handle the notification, refresh or reconnect its MCP entry. External CLI login is also detected by the running bridge. Direct HTTP MCP still requires credentials; this guide does not introduce anonymous HTTP business access.
 
 Run `shiliu status`. Reuse working authentication. Log in only when credentials are absent or explicitly rejected; a network failure alone does not justify logout.
 
@@ -124,6 +128,10 @@ For Layer C, run both commands separately:
 shiliu install --agent SAFE_CLIENT_NAME --json
 shiliu doctor --transport stdio --json
 ```
+
+Read `stdio_launch.remote_connected`, `login_state`, `bootstrap_tool_count`, and `business_tool_count` when present. A successful local handshake with only three bootstrap tools means MCP connected but login/business access is not ready; continue QR login instead of reporting installation failure. `shiliu status` and `shiliu tools` must still pass after login.
+
+If the client shows only `Connection closed`, inspect doctor's candidate verification fields `error_code`, `error_stage`, and `process_exit_code` when present. Fatal exits are 2 (`CONFIG_INVALID`), 3 (`RUNTIME_UNAVAILABLE`), and 4 (`INTERNAL_ERROR`). Recoverable MCP results use `LOGIN_REQUIRED`, `AUTH_EXPIRED`, `CREDENTIAL_UNAVAILABLE`, or `REMOTE_UNAVAILABLE` and keep the bridge connected. Read the local safe diagnostic log at `~/.shiliu-ai/logs/mcp-diagnostics.jsonl` if command execution or client logs cannot identify the cause; `shiliu_connection_status` also reports its actual path and `diagnostic_log_available`. Do not request credentials or change WorkBuddy's built-in hooks to obtain diagnostics.
 
 Keep `standard_npx` as the preferred candidate. If diagnostics also return `absolute_current_install`, present it only as a fallback and preserve all reported tradeoffs: the path may fail after a runtime/application update, it pins the installed CLI version, and it may require reinstalling the CLI and updating the configuration. `doctor` tests this machine's candidate command, not the target client's process environment.
 
