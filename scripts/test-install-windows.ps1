@@ -225,8 +225,8 @@ try {
   Assert-True ($versionFailure.Output -notmatch 'CLI installed') 'A failed version check must not report installation success.'
 
   $oldCli = Invoke-InstallerCase 'old-cli' $node22 $npmCurrent $shiliuTooOld
-  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.3.9 must fail installation.'
-  Assert-True ($oldCli.Output -match '1\.3\.9 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
+  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.3.10 must fail installation.'
+  Assert-True ($oldCli.Output -match '1\.3\.10 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
   Assert-True ($oldCli.Output -notmatch 'CLI installed') 'An old CLI must not report installation success.'
 
   $unparseableCli = Invoke-InstallerCase 'unparseable-cli' $node22 $npmCurrent $shiliuUnparseable

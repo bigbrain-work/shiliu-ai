@@ -7,6 +7,8 @@ import {
 } from "./configurators.js";
 import { PACKAGE_VERSION } from "./constants.js";
 import { collectRuntimeDiagnostics } from "./runtime-diagnostics.js";
+import { LOGIN_TOOL_NAMES } from "./proxy-session.js";
+import { parseDiagnosticOutput, diagnosticSummary } from "./mcp-diagnostics.js";
 
 function sanitizedEnvironment(env) {
   return Object.fromEntries(
@@ -39,9 +41,18 @@ export async function verifyStdioLaunch({
     const operation = (async () => {
       await client.connect(transport);
       const catalog = await client.listTools();
-      return catalog.tools || [];
+      const tools = catalog.tools || [];
+      const bootstrapCount = tools.filter((tool) => LOGIN_TOOL_NAMES.has(tool.name)).length;
+      let remoteConnected = bootstrapCount === 0;
+      let loginState = bootstrapCount === 0 ? "legacy_bridge" : "checking_login";
+      if (tools.some((tool) => tool.name === "shiliu_connection_status")) {
+        const result = await client.callTool({ name: "shiliu_connection_status", arguments: {} });
+        remoteConnected = result.structuredContent?.remote_connected === true;
+        loginState = result.structuredContent?.status || loginState;
+      }
+      return { tools, bootstrapCount, remoteConnected, loginState };
     })();
-    const tools = await Promise.race([
+    const { tools, bootstrapCount, remoteConnected, loginState } = await Promise.race([
       operation,
       new Promise((_, reject) => {
         timeout = setTimeout(
@@ -55,16 +66,23 @@ export async function verifyStdioLaunch({
       attempted: true,
       ok: true,
       tool_count: tools.length,
-      detail: `本机启动验证成功，tools/list 返回 ${tools.length} 个工具`,
+      bootstrap_tool_count: bootstrapCount,
+      business_tool_count: tools.length - bootstrapCount,
+      remote_connected: remoteConnected,
+      login_state: loginState,
+      detail: `本机 MCP 启动验证成功，${bootstrapCount} 个登录/状态工具、${tools.length - bootstrapCount} 个业务工具；${remoteConnected ? "远程服务已连接" : "远程业务连接尚未完成"}`,
     };
   } catch (error) {
-    const detail = stderr.trim();
+    const diagnostic = parseDiagnosticOutput(stderr) || diagnosticSummary(error.code === "ENOENT" ? "RUNTIME_UNAVAILABLE" : "PROTOCOL_ERROR", "mcp_start");
     return {
       state: "stdio_launch_failed",
       attempted: true,
       ok: false,
       tool_count: 0,
-      detail: detail ? `${error.message}; stderr: ${detail}` : error.message,
+      error_code: diagnostic.code,
+      error_stage: diagnostic.stage,
+      process_exit_code: diagnostic.fatal ? diagnostic.exit_code : null,
+      detail: `${diagnostic.code} (${diagnostic.stage})：${diagnostic.message} ${diagnostic.action}`,
     };
   } finally {
     clearTimeout(timeout);
