@@ -7,6 +7,7 @@ const COMMANDS = new Set([
   "status",
   "tools",
   "doctor",
+  "repair",
   "call",
   "mcp",
   "proxy",
@@ -20,6 +21,13 @@ export function parseCliArguments(args) {
     allowPositionals: true,
     strict: true,
     options: {
+      "launch-file": { type: "string" },
+      "node-path": { type: "string" },
+      "npm-cli": { type: "string" },
+      "npm-cache": { type: "string" },
+      "cache-entry": { type: "string" },
+      "standard-only": { type: "boolean", default: false },
+      prepare: { type: "boolean", default: false },
       agent: {
         type: "string",
         short: "a",
@@ -142,6 +150,18 @@ export function parseCliArguments(args) {
   if (command !== "doctor" && parsed.values.transport !== undefined) {
     throw new Error("--transport 仅适用于 shiliu doctor");
   }
+  const launchOptions = ["launch-file", "node-path", "npm-cli", "npm-cache", "cache-entry"];
+  if (!["doctor", "repair"].includes(command) && launchOptions.some((key) => parsed.values[key] !== undefined)) {
+    throw new Error("启动诊断选项仅适用于 doctor 或 repair");
+  }
+  if (command === "repair" && !parsed.values["cache-entry"] && !parsed.values.help) {
+    throw new Error("repair 需要 --cache-entry 指定确认损坏的石榴 npx 安装目录");
+  }
+  if (command !== "repair" && parsed.values["cache-entry"] !== undefined) {
+    throw new Error("--cache-entry 仅适用于 repair");
+  }
+  if (parsed.values["standard-only"] && command !== "doctor") throw new Error("--standard-only 仅适用于 doctor");
+  if (parsed.values.prepare && command !== "doctor") throw new Error("--prepare 仅适用于 doctor");
   if (command !== "call" && argumentSources > 0) {
     throw new Error("参数输入选项仅适用于 shiliu call");
   }
@@ -172,6 +192,12 @@ export function parseCliArguments(args) {
   }
 
   return {
+    ...(["doctor", "repair"].includes(command) ? {
+      launchFile: parsed.values["launch-file"], nodePath: parsed.values["node-path"],
+      npmCli: parsed.values["npm-cli"], npmCache: parsed.values["npm-cache"], cacheEntry: parsed.values["cache-entry"],
+      standardOnly: parsed.values["standard-only"],
+      prepare: parsed.values.prepare,
+    } : {}),
     command,
     subcommand,
     agent,

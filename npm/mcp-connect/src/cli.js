@@ -57,6 +57,8 @@ function printHelp() {
   shiliu status [--json]
   shiliu tools [--json]
   shiliu doctor [--transport stdio] [--dry-run] [--json]
+  shiliu doctor --launch-file <mcp.json> --node-path <node> --npm-cache <cache> --json
+  shiliu repair --cache-entry <cache/_npx/hash> [--node-path <node>] [--npm-cli <npm-cli.js>] [--npm-cache <cache>] [--dry-run] [--json]
   shiliu call <tool> [--args-stdin | --args-file <path> | --args <json>] [--dry-run]
   shiliu call <tool> --args-file <path> --out <path> [--force]
   shiliu skill install --agent <name> [--scope project|user] [--json]
@@ -81,6 +83,13 @@ function printHelp() {
       --wait          等待指定登录会话完成
       --force         强制刷新 Skill，或显式覆盖 call --out 文件
       --transport <type> doctor 要验证的传输方式（当前仅 stdio）
+      --standard-only doctor 只验收标准 npx 启动，不用备选安装掩盖失败
+      --prepare       doctor 先按目标 Node/npm/cache 预热包，再开始握手计时
+      --launch-file <path> 读取标准 JSON 中 shiliu_mcp 的无凭据启动配置
+      --node-path <path> 指定目标客户端实际使用的 Node 绝对路径
+      --npm-cli <path> 指定同源 npm-cli.js 的绝对路径
+      --npm-cache <path> 指定目标客户端的 npm 缓存目录
+      --cache-entry <path> repair 要备份重建的独占石榴 npx 安装目录
       --args-stdin     从标准输入读取工具参数 JSON（推荐）
       --args-file <path> 从文件读取工具参数 JSON（推荐）
       --args <json>   内联工具参数 JSON（仅适合简单参数）
@@ -659,6 +668,12 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
 
   const home = path.resolve(options.home || os.homedir());
+  if (options.command === "repair") {
+    const { printRepair } = await import("./repair.js");
+    const report = await printRepair(options);
+    if (!report.ok) process.exitCode = report.process_exit_code || 3;
+    return;
+  }
   if (options.command === "skill") {
     if (options.subcommand === "install") {
       await printSkillInstall({
@@ -742,13 +757,14 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (options.command === "doctor") {
     const report = await printDoctor({
+      ...options,
       dryRun: options.dryRun,
       platform: process.platform,
       env: process.env,
       json: options.json,
     });
     if (report.stdio_launch.attempted && !report.stdio_launch.ok) {
-      process.exitCode = 1;
+      process.exitCode = report.stdio_launch.process_exit_code || 1;
     }
     return;
   }
