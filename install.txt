@@ -2,7 +2,24 @@
 
 Canonical URL: https://bigbrain.work/shiliuAI/install.txt
 
-Use this guide only for a user-authorized installation. Follow Steps 1-6 and resume at the failed stage after repair. Do not infer installation steps from the product homepage. Never request credentials or place tokens in commands, code, Git, Agent configuration, logs, or replies. The CLI owns credential storage.
+## Interface overview
+
+Audience: the current Agent, using the capabilities of its client and local environment.
+
+Purpose: guide the Agent through Shiliu MCP installation, CLI updates, WeChat authorization, client configuration, connection verification, and recovery from an existing connection failure.
+
+Interface type: a public, read-only plain-text guide fetched from the canonical URL above. Reading it requires no login and works before MCP connects. The Agent performs the applicable commands or documented client actions under the user's authorization, then checks and reports their results.
+
+| When to read this interface | Where to start |
+| --- | --- |
+| First-time Shiliu MCP setup | Steps 1-6: identify capabilities, install, authorize, configure, and verify. |
+| Update an existing Shiliu CLI | Step 2, then Step 6. Preserve valid login, existing configuration, and unrelated settings; do not repeat Skill installation solely to update the CLI. |
+| Connection closed, initialize timeout, or another MCP connection failure | Section 7: establish the failed stage and actual launch context before choosing a remedy. |
+| Login completed but tools are absent, or the Agent has not loaded the connection | Section 7, then Step 6: check login/remote state, enable/trust/reload state, and native tool discovery. |
+
+How to use: read this guide, select the scenario and capability branch that match the current evidence, execute only the applicable steps, and report what was actually verified. A completed terminal check, pending login, and an Agent-connected MCP are separate states.
+
+Use this guide only for user-authorized installation, CLI updates, or connection recovery. Follow Steps 1-6 for a new setup and resume at the failed stage after repair. Do not infer installation steps from the product homepage. Never request credentials or place tokens in commands, code, Git, Agent configuration, logs, or replies. The CLI owns credential storage.
 
 If an existing MCP connection fails, go directly to Section 7 (Diagnose and recover a failed connection). It is available through this public guide even when MCP cannot initialize. These instructions address the current Agent by capability and apply across clients; do not assume a particular vendor, configuration location, or runtime.
 
