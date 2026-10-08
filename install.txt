@@ -4,6 +4,8 @@ Canonical URL: https://bigbrain.work/shiliuAI/install.txt
 
 Use this guide only for a user-authorized installation. Follow Steps 1-6 and resume at the failed stage after repair. Do not infer installation steps from the product homepage. Never request credentials or place tokens in commands, code, Git, Agent configuration, logs, or replies. The CLI owns credential storage.
 
+If an existing MCP connection fails, go directly to Section 7 (Diagnose and recover a failed connection). It is available through this public guide even when MCP cannot initialize. These instructions address the current Agent by capability and apply across clients; do not assume a particular vendor, configuration location, or runtime.
+
 ## 1. Check the environment
 
 Identify the current Agent, shell, and runtime that will launch MCP. The CLI and MCP process must share the same OS user and credential store. Classify by capability, not by guessing a vendor-specific configuration file:
@@ -131,7 +133,7 @@ shiliu doctor --transport stdio --json
 
 Read `stdio_launch.remote_connected`, `login_state`, `bootstrap_tool_count`, and `business_tool_count` when present. A successful local handshake with only three bootstrap tools means MCP connected but login/business access is not ready; continue QR login instead of reporting installation failure. `shiliu status` and `shiliu tools` must still pass after login.
 
-If the client shows only `Connection closed`, inspect doctor's candidate verification fields `error_code`, `error_stage`, and `process_exit_code` when present. Fatal exits are 2 (`CONFIG_INVALID`), 3 (`RUNTIME_UNAVAILABLE`), and 4 (`INTERNAL_ERROR`). Recoverable MCP results use `LOGIN_REQUIRED`, `AUTH_EXPIRED`, `CREDENTIAL_UNAVAILABLE`, or `REMOTE_UNAVAILABLE` and keep the bridge connected. Read the local safe diagnostic log at `~/.shiliu-ai/logs/mcp-diagnostics.jsonl` if command execution or client logs cannot identify the cause; `shiliu_connection_status` also reports its actual path and `diagnostic_log_available`. Do not request credentials or change WorkBuddy's built-in hooks to obtain diagnostics.
+For `Connection closed`, initialize timeouts, or another connection failure, follow Section 7 before choosing a remedy. Collect the current Agent's actual launch context and safe diagnostic fields; do not infer a login failure from a generic connection error.
 
 Keep `standard_npx` as the preferred candidate. If diagnostics also return `absolute_current_install`, present it only as a fallback and preserve all reported tradeoffs: the path may fail after a runtime/application update, it pins the installed CLI version, and it may require reinstalling the CLI and updating the configuration. `doctor` tests this machine's candidate command, not the target client's process environment.
 
@@ -187,4 +189,65 @@ For Layer D, successful `shiliu status`, `shiliu tools --json`, and a non-billab
 
 Report the CLI version, Skill path and scope, configuration state and location, reload state, CLI connection result, Agent connection result, and discovered tool names. Distinguish `CLI ready`, `configured but awaiting reload`, and `Agent connected`. If Agent discovery cannot be verified, say so. Continue the original task using only capabilities actually available.
 
-For an existing connection failure, use the installed Skill's `references/installation.md`. Update policy belongs to `SKILL.md`, not an extra installation stage. Do not use logout or an unscoped Skills update as generic troubleshooting.
+For an existing connection failure, use Section 7 of this public guide. The installed Skill's `references/installation.md` may provide additional context, but a working MCP connection or installed Skill is not required to read these diagnostics. Update policy belongs to `SKILL.md`, not an extra installation stage. Do not use logout or an unscoped Skills update as generic troubleshooting.
+
+## 7. Diagnose and recover a failed connection
+
+This is an Agent-facing recovery procedure for an existing installation, not a request to repeat all installation steps. `MCP error -32000: Connection closed` and initialize timeouts are symptoms, not diagnoses. Keep the user's original task and resume it only with capabilities that are actually available.
+
+### 7.1 Establish the failed stage before changing anything
+
+Identify whether failure occurs before the CLI starts, during local stdio initialize, while checking login, while connecting to the remote service, or only while loading tools into the Agent. Record the current Agent's documented MCP command/args, transport, Node executable/version, npm-cli.js, npm cache, and configuration source when accessible. A healthy terminal installation may differ from the installation launched by the Agent. Do not guess private runtime paths or modify opaque application storage.
+
+For local stdio (Layers B/C), run these separately and record each exit code. On Windows PowerShell, use `shiliu.cmd` if its `.ps1` wrapper is blocked:
+
+```text
+shiliu --version
+shiliu doctor --transport stdio --json
+```
+
+CLI 1.3.11 or newer is required for independent dependency diagnostics and targeted repair. If older, update only the CLI using Step 2, then resume this recovery procedure; do not reinstall Skills, overwrite other MCP entries, or require login just to diagnose stdio. `--version` alone does not check dependencies. First inspect an existing failure without `--prepare`; preparation may download/update the package and is a separate recovery action.
+
+If the Agent uses another runtime or cache, repeat doctor with that verified context and, when available, its documented credential-free JSON configuration:
+
+```text
+shiliu doctor --node-path "CLIENT_NODE_ABSOLUTE_PATH" --npm-cli "CLIENT_NPM_CLI_JS_ABSOLUTE_PATH" --npm-cache "CLIENT_NPM_CACHE_ABSOLUTE_PATH" --json
+shiliu doctor --launch-file "CLIENT_MCP_JSON" --node-path "CLIENT_NODE_ABSOLUTE_PATH" --npm-cli "CLIENT_NPM_CLI_JS_ABSOLUTE_PATH" --npm-cache "CLIENT_NPM_CACHE_ABSOLUTE_PATH" --json
+```
+
+Choose the applicable command; all uppercase values are placeholders to resolve from evidence, never values to run literally. Read `validation_scope`, candidate `verification`, `stdio_launch`, and `stdio_launch.child_runtime` when present. The cause is in `child_runtime.reason` for a captured runtime failure; some preparation failures use `error_reason` instead. Also inspect `error_code`, `error_stage`, and `process_exit_code`. Do not replace a failed specified-context probe with a successful terminal fallback and call the client repaired.
+
+Use Shiliu's safe log at `~/.shiliu-ai/logs/mcp-diagnostics.jsonl` and the client's captured child stderr if needed. Match timestamps and the actual installation path. `shiliu_connection_status`, when available, reports the diagnostic path and log availability; do not require that tool when initialize itself fails. Extract only relevant safe diagnostic fields, not complete credential stores, environment variables, headers, or unsanitized client logs.
+
+### 7.2 Choose the remedy from evidence
+
+| Evidence | Agent action |
+| --- | --- |
+| Command execution blocked before `shiliu` starts, no Node/npm, or the client has no local stdio capability | Handle the current client's execution/capability issue through its documented mechanism. Report what could not run. Do not disable built-in security hooks or treat this as a Shiliu login/cache fault. Follow Layers A/D/E as supported. |
+| Exit 2 / `CONFIG_INVALID`, or wrong command/args/transport | Compare with the generated Shiliu stdio definition and correct only this MCP entry through the client's documented mechanism. Preserve other entries and credentials. |
+| Exit 3 / `RUNTIME_UNAVAILABLE` with `DEPENDENCY_INCOMPLETE`, or captured missing-module evidence in the actual Shiliu installation | Identify the exact failed install. For an exclusive Shiliu `_npx` entry, use 7.3. For a damaged global install, update/reinstall the official CLI in that runtime. Missing Ajv files do not imply that Node 22 is unsupported. |
+| `NODE_VERSION_UNSUPPORTED` | Correct the actual launching Node runtime to the CLI's declared minimum. Use Step 1's higher minimum only when a Skill install/refresh is also needed. |
+| `NATIVE_DEPENDENCY_UNAVAILABLE` or `RUNTIME_LOAD_FAILED` | Inspect actual OS/architecture/runtime, install path, and the safe original error code. Reinstall the matching official CLI where evidence supports it. Do not assume a dependency-cache repair or repeated scan will fix every runtime failure. |
+| Initialize timeout with evidence of first-time npm download/extraction, or `NPM_PREPARE_FAILED` | Check registry/network and the selected runtime/cache. When appropriate, run the same doctor command with `--prepare` once to finish download/extraction before the handshake deadline, then verify initialize + tools/list. Do not blindly loop retries. |
+| `REPAIR_IN_PROGRESS`, `REPAIR_ALREADY_RUNNING`, or `MCP_STILL_RUNNING` | Wait for the active repair or stop this Shiliu MCP entry through the client before repair. Never remove a live owner's lock or terminate unrelated Agent/Node processes. An interrupted lock requires manual inspection. |
+| Local initialize succeeds, three bootstrap tools, `LOGIN_REQUIRED` or `login_required` | MCP is connected; authentication is pending. Use Step 4's QR login, then refresh tools/list. Do not repair the cache merely because business tools are absent. |
+| `AUTH_EXPIRED` | Run `shiliu status` or `shiliu_connection_status` to check/refresh stored authorization. If explicitly rejected or still expired, use Step 4 to log in again; never insert a token into MCP configuration. |
+| `CREDENTIAL_UNAVAILABLE` | Check whether CLI and MCP share the same OS user and accessible system credential store. Do not clear credentials as a generic fix. |
+| `REMOTE_UNAVAILABLE` | Check remote reachability/network and retry status after recovery. Preserve login and MCP configuration; a network failure does not establish that authorization is invalid. |
+| Doctor passes in the actual launch context but native Agent tools remain absent | Check this MCP entry's enable/trust state through the current client's documented UI, then reconnect/reload and verify native discovery. A local probe does not prove the Agent loaded the entry. |
+| `PROTOCOL_ERROR` | Check the documented transport and duplex stdio launch, including the Windows cmd definition in Step 5. Preserve protocol stdout; do not add debugging text there. |
+| Exit 4 / `INTERNAL_ERROR`, or unresolved failure after the matching remedy | Reconnect once if appropriate, then report safe version/runtime/stage/error evidence for support. Do not claim a root cause without evidence or repeatedly reinstall/scan. |
+
+Fatal startup exits are 2/3/4; normal shutdown is 0. Login, authorization, credential, and remote-network states normally keep the local bridge connected. Distinguish those states from a fatal startup failure.
+
+### 7.3 Repair only a confirmed damaged extraction
+
+Use the exact cache entry resolved from the failed child installation or captured stderr, not a path or hash copied from another user's machine. Confirm that its root manifest belongs exclusively to `@bigbrain-work/mcp-connect`. First stop/disable this entry's automatic launch through the client, then run the repair dry-run and actual repair separately using the same verified Node/npm/cache, as shown in Step 5.
+
+Require dry-run success before repair. Keep the backup, credentials, other package entries, and npm content cache. Repair reinstalls the original unversioned package once and verifies both the rebuilt entry and the selected launch. If reinstall/verification fails, report the error and retained backup; do not delete the whole cache, silently restore the damaged directory, remove a live lock, or retry indefinitely. If `status=repaired`, require both verification results to pass and honor `reload_required`; the client still needs to reconnect.
+
+### 7.4 Reconnect, verify, and report to the user
+
+After the matching remedy, reconnect/reload the Shiliu entry when needed. For stdio, verify initialize + tools/list in the actual launch context. If not logged in, three bootstrap tools are a valid connected state; then complete QR login as needed. After login, run `shiliu status` and `shiliu tools` separately and check whether the current Agent itself can discover the live tools. Never assume a fixed tool count or call paid business tools solely to test recovery.
+
+Report: CLI version; diagnosed stage and safe error code/reason; whether the tested runtime/cache is the Agent's actual context or only the terminal; what was changed; backup path if any; local handshake result; login/remote state; and native Agent discovery/reload state. If commands or configuration cannot be inspected, explain that limit and give only the minimal applicable commands or documented GUI action. Distinguish `diagnosis incomplete`, `local launch verified`, `repaired but awaiting reconnect`, and `Agent connected`; do not mark the user's original task complete from a terminal-only test.
