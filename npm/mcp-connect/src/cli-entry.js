@@ -1,4 +1,7 @@
 import { createDiagnosticReporter, classifyFatalError, McpDiagnosticError } from "./mcp-diagnostics.js";
+import { parseCliArguments } from "./arguments.js";
+import { PACKAGE_VERSION } from "./constants.js";
+import { runtimeFailureDetails, runtimeIdentity, checkRepairLock } from "./runtime-preflight.js";
 
 export function supportsNode(version) {
   const [major, minor, patch] = version.split(".").map(Number);
@@ -16,7 +19,8 @@ export async function runEntry({
     if (fatalReport) return fatalReport;
     const classified = classifyFatalError(error, stage);
     processImpl.exitCode = classified.exitCode;
-    fatalReport = reporter.record(classified.code, { stage: classified.stage, fatal: true }).catch(() => {});
+    fatalReport = reporter.record(classified.code, { stage: classified.stage, fatal: true,
+      runtime: classified.code === "RUNTIME_UNAVAILABLE" ? runtimeFailureDetails(error, nodeVersion) : runtimeIdentity() }).catch(() => {});
     return fatalReport;
   };
   // Catch import failures as well as failures that occur after runProxy has returned.
@@ -26,7 +30,30 @@ export async function runEntry({
     processImpl.once("unhandledRejection", terminate);
   }
   try {
-    if (!supportsNode(nodeVersion)) throw new McpDiagnosticError("RUNTIME_UNAVAILABLE", "runtime_load");
+    if (!supportsNode(nodeVersion)) {
+      const error = new McpDiagnosticError("RUNTIME_UNAVAILABLE", "runtime_load");
+      error.runtimeReason = "NODE_VERSION_UNSUPPORTED";
+      throw error;
+    }
+    let options;
+    try { options = parseCliArguments(argv); }
+    catch { throw new McpDiagnosticError("CONFIG_INVALID", "argument_parse"); }
+    if (options.version && !options.help) { console.log(PACKAGE_VERSION); return; }
+    if (["doctor", "repair"].includes(options.command) && !options.help) {
+      if (options.command === "doctor") {
+        const { printDoctor } = await import("./doctor.js");
+        const report = await printDoctor(options);
+        if (report.stdio_launch.attempted && !report.stdio_launch.ok) {
+          processImpl.exitCode = report.stdio_launch.process_exit_code || 1;
+        }
+      } else {
+        const { printRepair } = await import("./repair.js");
+        const result = await printRepair(options);
+        if (!result.ok) processImpl.exitCode = result.process_exit_code || 3;
+      }
+      return;
+    }
+    if (mcp) await checkRepairLock();
     cli = await loadCli();
   } catch (error) {
     await fatal(error, "runtime_load");

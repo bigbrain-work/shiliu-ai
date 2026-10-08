@@ -1,6 +1,7 @@
 import { appendFile, chmod, mkdir, rename, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { safeRuntimeDetails, runtimeIdentity } from "./runtime-preflight.js";
 
 const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const stderrStreams = new WeakSet();
@@ -64,11 +65,12 @@ export function createDiagnosticReporter({ home = os.homedir(), stderr = process
   return {
     path: logPath,
     available: () => available,
-    record(code, { stage = "process", fatal = false } = {}) {
+    record(code, { stage = "process", fatal = false, runtime } = {}) {
       // Never serialize errors, stack traces, arguments, environment, URLs or remote responses.
       const record = {
         schema_version: 1, timestamp: new Date().toISOString(), component: "shiliu_mcp",
         pid: process.pid, ...diagnosticSummary(code, stage, fatal), diagnostic_path: logPath,
+        runtime: runtime ? safeRuntimeDetails(runtime) : runtimeIdentity(),
       };
       const line = `${JSON.stringify(record)}\n`;
       try { stderr.write(line); } catch { /* stderr may already be closed */ }
@@ -92,6 +94,7 @@ export function parseDiagnosticOutput(stderr) {
       const parsed = JSON.parse(line);
       if (parsed.component !== "shiliu_mcp" || !hasOwn(DIAGNOSTIC_CODES, parsed.code)) continue;
       const summary = diagnosticSummary(parsed.code, parsed.stage, parsed.fatal === true);
+      if (parsed.runtime) summary.runtime = safeRuntimeDetails(parsed.runtime);
       if (latest && parsed.code === "CONNECTION_CLOSED") continue;
       if (!latest || summary.fatal || !latest.fatal) latest = summary;
     } catch { /* Third-party output is deliberately not included in reports. */ }

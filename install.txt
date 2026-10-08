@@ -55,7 +55,7 @@ Require the installer's `CLI installed.` message and verify separately:
 shiliu --version
 ```
 
-Require CLI 1.3.10 or newer for the Layer C diagnostics, Layer D calls, and persisted Skill targets in this guide. Existing built-in Layer B configurations remain compatible with 1.3.7 or newer, but update before following this complete guide. If `shiliu` is blocked by PowerShell execution policy, use `shiliu.cmd` in that PowerShell session. If the command is missing, resolve the npm global executable location without replacing the runtime's PATH. CLI installation alone does not complete MCP setup.
+Require CLI 1.3.11 or newer for this guide's independent diagnostics and targeted repair. Existing built-in Layer B configurations remain compatible with 1.3.7 or newer, but update before following this complete guide. If `shiliu` is blocked by PowerShell execution policy, use `shiliu.cmd` in that PowerShell session. If the command is missing, resolve the npm global executable location without replacing the runtime's PATH. CLI installation alone does not complete MCP setup. The installer requires an actual npx initialize + tools/list handshake before reporting success; three bootstrap tools are sufficient without login. --version is lightweight and does not establish dependency integrity.
 
 ## 3. Install Skill
 
@@ -134,6 +134,33 @@ Read `stdio_launch.remote_connected`, `login_state`, `bootstrap_tool_count`, and
 If the client shows only `Connection closed`, inspect doctor's candidate verification fields `error_code`, `error_stage`, and `process_exit_code` when present. Fatal exits are 2 (`CONFIG_INVALID`), 3 (`RUNTIME_UNAVAILABLE`), and 4 (`INTERNAL_ERROR`). Recoverable MCP results use `LOGIN_REQUIRED`, `AUTH_EXPIRED`, `CREDENTIAL_UNAVAILABLE`, or `REMOTE_UNAVAILABLE` and keep the bridge connected. Read the local safe diagnostic log at `~/.shiliu-ai/logs/mcp-diagnostics.jsonl` if command execution or client logs cannot identify the cause; `shiliu_connection_status` also reports its actual path and `diagnostic_log_available`. Do not request credentials or change WorkBuddy's built-in hooks to obtain diagnostics.
 
 Keep `standard_npx` as the preferred candidate. If diagnostics also return `absolute_current_install`, present it only as a fallback and preserve all reported tradeoffs: the path may fail after a runtime/application update, it pins the installed CLI version, and it may require reinstalling the CLI and updating the configuration. `doctor` tests this machine's candidate command, not the target client's process environment.
+
+Before enabling the MCP entry, verify the actual launch context. A terminal global installation and an Agent's application-bundled npx installation can differ. For a client-documented JSON configuration with an empty env, pass that file, the client's actual Node executable, and its npm cache. Paths below are placeholders, not commands to run verbatim:
+
+```text
+shiliu doctor --launch-file "CLIENT_MCP_JSON" --node-path "CLIENT_NODE_ABSOLUTE_PATH" --npm-cache "CLIENT_NPM_CACHE_ABSOLUTE_PATH" --prepare --json
+```
+
+--prepare warms the same unversioned package in the selected Node/npm/cache before starting the handshake timer, so first-time download/extraction does not consume the MCP initialize deadline. It is opt-in and may install/update that package; omit it for the initial diagnosis of an existing failure. --dry-run never prepares or launches. A successful preparation/version check still requires the subsequent real handshake.
+
+If there is no readable documented configuration file yet, use the same package spec with the client's Node and same-source npm-cli.js:
+
+```text
+shiliu doctor --node-path "CLIENT_NODE_ABSOLUTE_PATH" --npm-cli "CLIENT_NPM_CLI_JS_ABSOLUTE_PATH" --npm-cache "CLIENT_NPM_CACHE_ABSOLUTE_PATH" --prepare --json
+```
+
+Do not guess private runtime paths or edit opaque application storage. The launch-file reader accepts only standard credential-free Shiliu stdio command/args; it rejects token-bearing env, URLs, headers, and arbitrary command arguments. Read validation_scope and stdio_launch.child_runtime when present. Specified launches do not fall back to a different healthy installation. A successful specified-context probe still does not prove the client has loaded that configuration; reconnect and check native tools in Step 6.
+
+doctor, repair, and --version load only Node built-ins before any SDK/business dependencies. Runtime failures retain exit 3 / RUNTIME_UNAVAILABLE and add a safe runtime.reason, such as DEPENDENCY_INCOMPLETE or NODE_VERSION_UNSUPPORTED, plus actual node_path, node_version, install_root, package_version and whitelisted missing_module/original_error_code. Do not infer that Node 22 is unsupported from a missing Ajv file, or that a repeated login can fix a dependency failure.
+
+For a confirmed damaged extraction directory only: disable this client's Shiliu MCP auto-start first, then run the following dry-run and repair separately. Use the same Node/npm/cache that failed, not an unrelated terminal runtime. CACHE_ENTRY must be the exact reported cache/_npx/HEX directory. Resolve it from child_runtime.install_root or the client's stderr; never repair based on a guessed hash.
+
+```text
+shiliu repair --cache-entry "CACHE_ENTRY_ABSOLUTE_PATH" --node-path "CLIENT_NODE_ABSOLUTE_PATH" --npm-cli "CLIENT_NPM_CLI_JS_ABSOLUTE_PATH" --npm-cache "CLIENT_NPM_CACHE_ABSOLUTE_PATH" --dry-run --json
+shiliu repair --cache-entry "CACHE_ENTRY_ABSOLUTE_PATH" --node-path "CLIENT_NODE_ABSOLUTE_PATH" --npm-cli "CLIENT_NPM_CLI_JS_ABSOLUTE_PATH" --npm-cache "CLIENT_NPM_CACHE_ABSOLUTE_PATH" --launch-file "CLIENT_MCP_JSON" --json
+```
+
+repair requires an exclusive cache entry whose root dependencies contain only @bigbrain-work/mcp-connect. It rejects unsafe/linked paths, another repair lock, and active or unresolved Shiliu launches that could use this entry. It moves only that extraction directory into cache/.shiliu-mcp-backups, reinstalls the original unversioned package spec once, and verifies both the fresh entry and the selected launch via initialize + tools/list. It preserves credentials and other extraction entries and never clears the npm content cache; npm may refresh its content cache normally during installation. CLI processes with this repair guard respect the lock; old clients/old CLI copies may not, which is why disabling auto-start remains required. No infinite retry or whole-cache deletion is performed. Interrupted repairs retain the lock for manual inspection; never remove it while its owner is running. A failed reinstall retains the backup and reports failure; no corrupted backup is silently restored. After repaired, honor reload_required and reconnect the client; don't equate repaired with native Agent access. Keep the evidence backup until recovery is confirmed.
 
 For a GUI, provide these separate fields: server name `shiliu_mcp`; transport `STDIO`; command from the chosen candidate; each `args` value as a separate ordered argument; environment variables empty. Do not add extra quote characters around paths with spaces. The user must save the GUI configuration; do not edit opaque application databases.
 

@@ -82,13 +82,38 @@ MCP 无法继续运行时，进程退出码区分为：`2` 配置/参数错误�
 
 未登录、凭据失效、凭据库不可读和远程暂时不可达分别返回 `LOGIN_REQUIRED`、`AUTH_EXPIRED`、`CREDENTIAL_UNAVAILABLE`、`REMOTE_UNAVAILABLE`，保持 MCP 连接。工具结果含 `code`、`stage`、`message`、`action`；`shiliu_connection_status` 额外返回诊断路径和 `diagnostic_log_available`。诊断只在状态/错误分类变化时记录，避免轮询重复刷日志。
 
-诊断输出为 stderr 上的一行 JSON，并保存在当前系统用户的 `~/.shiliu-ai/logs/mcp-diagnostics.jsonl`。日志到 512 KiB 时轮换，保留一份 `.1` 备份。错误记录只包含固定的安全说明、时间、阶段、进程 ID 和诊断路径，不包含原始异常、堆栈、命令参数、环境变量、请求内容、URL 或凭据。日志写入失败不影响 MCP 连接；请以 `diagnostic_log_available` 判断文件是否成功写入。
+诊断输出为 stderr 上的一行 JSON，并保存在当前系统用户的 `~/.shiliu-ai/logs/mcp-diagnostics.jsonl`。日志到 512 KiB 时轮换，保留一份 `.1` 备份。错误记录包含固定的安全说明、时间、阶段、进程 ID、诊断路径及实际 Node/安装位置。运行环境错误还会给出固定分类与白名单中的缺失模块名，不包含原始异常、堆栈、命令参数、环境变量、请求内容、URL 或凭据。日志写入失败不影响 MCP 连接；请以 `diagnostic_log_available` 判断文件是否成功写入。
 
 `doctor` 失败结果增加 `error_code`、`error_stage`、`process_exit_code`，优先使用连接程序的结构化诊断，避免仅显示 `Connection closed`；未能捕获子进程退出信息时 `process_exit_code` 为 `null`。第三方原始 stderr 不会直接写入报告。客户端仍可能只展示通用断开提示；Agent 可读取上述本地诊断日志继续排查。若 Node 根本无法启动，或进程被系统强制终止，连接程序无法保证产生日志。
 
 `doctor` 只能验证当前机器上的运行时和 stdio 启动链路，不能证明某个 Agent 已经保存、重载或连接 MCP。安装验收应由当前 Agent 通过其原生 MCP 连接调用一次免费的 `get_account_balance`；通过 `shiliu call` 调用只能验证 CLI。`call --dry-run` 只读取实时工具目录并校验参数结构，不执行服务端业务调用。`call --out` 成功时会返回绝对路径、字节数和 SHA-256；写入失败不会留下半成品文件。
 
-## 凭据安全
+## 安装诊断与凭据安全
+
+### 安装验收和定点修复（1.3.11）
+
+安装器先用 `doctor --standard-only --prepare` 预热标准 npx 包，再完成 `initialize` 和 `tools/list` 才报告成功；未登录时三个基础工具也能通过验收。下载/解包不占用握手计时，备选正常安装不会掩盖标准 npx 失败。`--version`、`doctor`、`repair` 的入口只使用 Node 内置模块，SDK/Ajv 缺文件时仍可诊断。Node 不满足最低版本或 CLI 自身诊断文件缺失时，仍需先恢复可运行的 CLI。
+
+终端的全局 CLI 与 Agent 内置 Node 使用的 npx 缓存可能不同。不要把终端验收等同于客户端验收。对于客户端已公开、可读的 JSON 配置，可用下面的模板重现启动；替换路径占位符，保留真实配置的无凭据 command/args：
+
+```text
+shiliu doctor --launch-file "CLIENT_MCP_JSON" --node-path "CLIENT_NODE" --npm-cache "CLIENT_NPM_CACHE" --prepare --json
+```
+
+没有配置文件时，可用 `--node-path`、`--npm-cli` 和 `--npm-cache` 按实际运行时预热同名包并验证握手。指定启动方式只验证该方式，不用另一份正常安装掩盖失败。报告中的 `validation_scope` 标识验证范围，`stdio_launch.child_runtime`（存在时）来自实际子进程；`runtime.current.process_node` 仍是运行 doctor 的进程。GUI 保存、信任和重连后的原生工具发现仍要单独确认。
+
+保持退出码 3 / `RUNTIME_UNAVAILABLE`，在 `runtime.reason` 中区分 `DEPENDENCY_INCOMPLETE`、`NODE_VERSION_UNSUPPORTED`、`NATIVE_DEPENDENCY_UNAVAILABLE` 等原因；只报告白名单内的 `original_error_code` 和 `missing_module`，不输出原始异常文本。
+
+确认损坏的缓存后，先停用目标客户端石榴 MCP 的自动启动，再分别运行（路径均为占位符）：
+
+```text
+shiliu repair --cache-entry "CACHE/_npx/HEX" --node-path "CLIENT_NODE" --npm-cli "CLIENT_NPM_CLI_JS" --npm-cache "CACHE" --dry-run --json
+shiliu repair --cache-entry "CACHE/_npx/HEX" --node-path "CLIENT_NODE" --npm-cli "CLIENT_NPM_CLI_JS" --npm-cache "CACHE" --launch-file "CLIENT_MCP_JSON" --json
+```
+
+修复命令核对缓存父目录及包归属，拒绝链接目录、共用包缓存、活动连接和并发修复。只把所选石榴 `_npx/HEX` 目录移动到同一缓存下的 `.shiliu-mcp-backups`，重装一次，再验证新缓存本身及选定启动命令。不会清空 npm 缓存、删除其他包或操作登录凭据。新 CLI 的 MCP 启动会尊重修复锁；旧版本不保证配合，仍须先停用客户端自动启动。被中断的锁需确认所有者已结束后人工处理；不自动抢占或反复重装。失败保留备份并报告失败，成功返回 `reload_required`，还需到客户端重连。确认恢复前保留备份。
+
+### 凭据规则
 
 - 不支持 `--api-key` 参数，避免密钥进入 shell 历史。
 - 默认微信扫码后获得短期访问令牌；过期前使用可轮换刷新令牌自动更新。

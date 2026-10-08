@@ -99,3 +99,43 @@ test("doctor verifies every offered stdio candidate and reports the working one"
   assert.equal(report.stdio_launch.verified_candidate, "absolute_current_install");
   assert.equal(report.candidates[1].tradeoffs.length, 3);
 });
+
+test("installer standard-only check cannot be satisfied by another working install", async () => {
+  const runtime = runtimeFixture();
+  runtime.current.shiliu_entry = "C:\\healthy\\bin\\shiliu.js";
+  runtime.persistent_path_baseline.npx.available = false;
+  const launches = [];
+  const report = await getDoctorReport({
+    platform: "win32", standardOnly: true, collectRuntime: () => runtime,
+    verifyLaunch: async ({ definition }) => {
+      launches.push(definition);
+      return { attempted: true, ok: definition.command !== "cmd", tool_count: 3 };
+    },
+  });
+  assert.equal(launches.length, 1);
+  assert.equal(report.status, "stdio_launch_failed");
+});
+
+test("explicit preparation finishes before the handshake and failure never starts MCP", async () => {
+  const steps = [];
+  const report = await getDoctorReport({
+    prepare: true, collectRuntime: runtimeFixture,
+    prepareNpm: () => { steps.push("prepare"); },
+    verifyLaunch: async () => { steps.push("handshake"); return { attempted: true, ok: true, tool_count: 3 }; },
+  });
+  assert.deepEqual(steps, ["prepare", "handshake"]);
+  assert.equal(report.preparation.ok, true);
+  const failure = await getDoctorReport({
+    prepare: true, collectRuntime: runtimeFixture,
+    prepareNpm: () => { throw new Error("sensitive-fixture-value"); },
+    verifyLaunch: async () => assert.fail("Must not start MCP after failed preparation"),
+  });
+  assert.equal(failure.stdio_launch.error_reason, "NPM_PREPARE_FAILED");
+  assert.equal(failure.stdio_launch.process_exit_code, 3);
+  assert.doesNotMatch(JSON.stringify(failure), /sensitive-fixture-value/u);
+  await getDoctorReport({
+    prepare: true, dryRun: true, collectRuntime: runtimeFixture,
+    prepareNpm: () => assert.fail("Dry run cannot prepare/install"),
+    verifyLaunch: async () => assert.fail("Dry run cannot start MCP"),
+  });
+});

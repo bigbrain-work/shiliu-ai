@@ -1,93 +1,14 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-
 import {
   stdioConfigurationCandidates,
   stdioServerDefinition,
 } from "./configurators.js";
-import { PACKAGE_VERSION } from "./constants.js";
 import { collectRuntimeDiagnostics } from "./runtime-diagnostics.js";
-import { LOGIN_TOOL_NAMES } from "./proxy-session.js";
-import { parseDiagnosticOutput, diagnosticSummary } from "./mcp-diagnostics.js";
+import { launchContext, runNpm } from "./launch-context.js";
+import { PACKAGE_NAME } from "./constants.js";
+import { verifyStdioLaunch as probe } from "./stdio-probe.js";
 
-function sanitizedEnvironment(env) {
-  return Object.fromEntries(
-    Object.entries(env).filter((entry) => typeof entry[1] === "string"),
-  );
-}
-
-export async function verifyStdioLaunch({
-  definition = stdioServerDefinition(),
-  env = process.env,
-  timeoutMs = 30000,
-} = {}) {
-  const transport = new StdioClientTransport({
-    command: definition.command,
-    args: definition.args,
-    env: sanitizedEnvironment(env),
-    stderr: "pipe",
-  });
-  const client = new Client({
-    name: "shiliu-ai-doctor",
-    version: PACKAGE_VERSION,
-  });
-  let stderr = "";
-  transport.stderr?.setEncoding("utf8");
-  transport.stderr?.on("data", (chunk) => {
-    stderr += chunk;
-  });
-  let timeout;
-  try {
-    const operation = (async () => {
-      await client.connect(transport);
-      const catalog = await client.listTools();
-      const tools = catalog.tools || [];
-      const bootstrapCount = tools.filter((tool) => LOGIN_TOOL_NAMES.has(tool.name)).length;
-      let remoteConnected = bootstrapCount === 0;
-      let loginState = bootstrapCount === 0 ? "legacy_bridge" : "checking_login";
-      if (tools.some((tool) => tool.name === "shiliu_connection_status")) {
-        const result = await client.callTool({ name: "shiliu_connection_status", arguments: {} });
-        remoteConnected = result.structuredContent?.remote_connected === true;
-        loginState = result.structuredContent?.status || loginState;
-      }
-      return { tools, bootstrapCount, remoteConnected, loginState };
-    })();
-    const { tools, bootstrapCount, remoteConnected, loginState } = await Promise.race([
-      operation,
-      new Promise((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error(`stdio MCP 验证在 ${timeoutMs}ms 后超时`)),
-          timeoutMs,
-        );
-      }),
-    ]);
-    return {
-      state: "stdio_launch_verified",
-      attempted: true,
-      ok: true,
-      tool_count: tools.length,
-      bootstrap_tool_count: bootstrapCount,
-      business_tool_count: tools.length - bootstrapCount,
-      remote_connected: remoteConnected,
-      login_state: loginState,
-      detail: `本机 MCP 启动验证成功，${bootstrapCount} 个登录/状态工具、${tools.length - bootstrapCount} 个业务工具；${remoteConnected ? "远程服务已连接" : "远程业务连接尚未完成"}`,
-    };
-  } catch (error) {
-    const diagnostic = parseDiagnosticOutput(stderr) || diagnosticSummary(error.code === "ENOENT" ? "RUNTIME_UNAVAILABLE" : "PROTOCOL_ERROR", "mcp_start");
-    return {
-      state: "stdio_launch_failed",
-      attempted: true,
-      ok: false,
-      tool_count: 0,
-      error_code: diagnostic.code,
-      error_stage: diagnostic.stage,
-      process_exit_code: diagnostic.fatal ? diagnostic.exit_code : null,
-      detail: `${diagnostic.code} (${diagnostic.stage})：${diagnostic.message} ${diagnostic.action}`,
-    };
-  } finally {
-    clearTimeout(timeout);
-    await client.close().catch(() => {});
-  }
+export function verifyStdioLaunch(options = {}) {
+  return probe({ definition: stdioServerDefinition(), ...options });
 }
 
 export async function getDoctorReport({
@@ -96,15 +17,33 @@ export async function getDoctorReport({
   env = process.env,
   collectRuntime = collectRuntimeDiagnostics,
   verifyLaunch = verifyStdioLaunch,
+  nodePath, npmCli, npmCache, launchFile, standardOnly = false,
+  prepare = false, prepareNpm = runNpm,
 } = {}) {
+  const context = await launchContext({ nodePath, npmCli, npmCache, launchFile }, env);
+  env = context.env;
   const runtime = collectRuntime({ platform, env });
   const { candidates: baseCandidates } = stdioConfigurationCandidates({
     platform,
     env,
     diagnostics: runtime,
   });
+  const launchCandidates = context.definition
+    ? [{ kind: "specified_launch", preferred: true, definition: context.definition, warnings: [], tradeoffs: [] }]
+    : standardOnly ? baseCandidates.filter((candidate) => candidate.kind === "standard_npx") : baseCandidates;
+  let preparation = { attempted: false, ok: null };
+  if (prepare && !dryRun && (!context.definition || context.definition.args.includes(PACKAGE_NAME))) {
+    // Download/extract before the MCP handshake deadline, not inside initialize.
+    // The version check only warms npm; the subsequent handshake checks dependencies.
+    try {
+      prepareNpm(context, ["exec", "--yes", "--prefer-online", "--", PACKAGE_NAME, "--version"]);
+      preparation = { attempted: true, ok: true };
+    } catch {
+      preparation = { attempted: true, ok: false, reason: "NPM_PREPARE_FAILED" };
+    }
+  }
   const candidates = [];
-  for (const candidate of baseCandidates) {
+  for (const candidate of launchCandidates) {
     const verification = dryRun
       ? {
           state: "not_attempted",
@@ -113,7 +52,11 @@ export async function getDoctorReport({
           tool_count: null,
           detail: "演练模式未启动此候选配置。",
         }
-      : await verifyLaunch({ definition: candidate.definition, env });
+      : preparation.ok === false
+        ? { state: "stdio_launch_failed", attempted: true, ok: false, tool_count: 0,
+            error_code: "RUNTIME_UNAVAILABLE", error_stage: "runtime_load", process_exit_code: 3,
+            error_reason: preparation.reason, detail: "npm 预热失败，未进入 MCP 握手；核对目标客户端的 Node/npm/cache 和网络。" }
+        : await verifyLaunch({ definition: candidate.definition, env });
     candidates.push({ ...candidate, verification });
   }
   const successfulCandidate = candidates.find(
@@ -137,6 +80,7 @@ export async function getDoctorReport({
           state: "stdio_launch_failed",
           attempted: true,
           ok: false,
+          ...(candidates[0]?.verification || {}),
           tool_count: 0,
           verified_candidate: null,
           detail: "所有候选 stdio 配置的本机启动验证均失败。",
@@ -149,6 +93,9 @@ export async function getDoctorReport({
       : runtime.state,
     transport: "stdio",
     runtime,
+    validation_scope: context.scope,
+    preparation,
+    installation: { node_path: context.node, npm_cli: context.npmCli || null, npm_cache: context.env.npm_config_cache || null },
     candidates,
     stdio_launch: launch,
     client_connection: {
@@ -165,6 +112,7 @@ export async function printDoctor(options = {}) {
     console.log(JSON.stringify(report, null, 2));
     return report;
   }
+  console.log(`验证范围          ${report.validation_scope}；目标 Agent 仍需实际重连确认`);
   const current = report.runtime.current;
   const persistent = report.runtime.persistent_path_baseline;
   console.log(`运行时状态        ${report.runtime.state}`);
@@ -183,6 +131,11 @@ export async function printDoctor(options = {}) {
     console.log(
       `候选 ${candidate.kind}  ${candidate.preferred ? "首选" : "备选"}；${candidate.verification.detail}`,
     );
+    const child = candidate.verification.child_runtime;
+    if (child) {
+      console.log(`  实际子进程：Node ${child.node_version}；${child.node_path}；安装=${child.install_root}`);
+      if (child.reason !== "RUNTIME_READY") console.log(`  原因：${child.reason}${child.missing_module ? `；缺失=${child.missing_module}` : ""}`);
+    }
     if (candidate.warnings.length > 0) {
       console.log(`  提示：${candidate.warnings.join("；")}`);
     }

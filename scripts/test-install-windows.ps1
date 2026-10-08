@@ -150,6 +150,7 @@ exit /b 0
 
 $shiliuSuccess = @'
 @echo off
+echo shiliu %*>>"%SHILIU_INSTALL_TEST_LOG%"
 echo 9.9.9-test
 exit /b 0
 '@
@@ -158,6 +159,16 @@ $shiliuFailure = @'
 @echo off
 echo version failed 1>&2
 exit /b 1
+'@
+
+$shiliuHandshakeFailure = @'
+@echo off
+if "%~1"=="--version" (
+  echo 9.9.9-test
+  exit /b 0
+)
+echo RUNTIME_UNAVAILABLE
+exit /b 3
 '@
 
 $shiliuTooOld = @'
@@ -200,6 +211,11 @@ try {
   $currentNpmLog = Get-Content -LiteralPath $currentNpm.LogPath -Raw
   Assert-True ($currentNpmLog -notmatch 'npm@9\.9\.4') 'Current npm must not be downgraded to the compatibility release.'
   Assert-True ($currentNpmLog -match '@bigbrain-work/mcp-connect@latest --prefer-online') 'Current npm path must install the online latest CLI.'
+  Assert-True ($currentNpmLog -match 'shiliu doctor --transport stdio --standard-only --prepare --json') 'Installer must verify an actual MCP handshake after checking the version.'
+
+  $handshakeFailure = Invoke-InstallerCase 'handshake-failure' $node22 $npmCurrent $shiliuHandshakeFailure
+  Assert-True ($handshakeFailure.ExitCode -ne 0) 'A failed handshake must fail installation even when the version is valid.'
+  Assert-True ($handshakeFailure.Output -notmatch 'CLI installed') 'A failed handshake must not report installation success.'
 
   $busyNpm = Invoke-InstallerCase 'busy-npm' $node22 $npmBusyOnce $shiliuSuccess
   Assert-True ($busyNpm.ExitCode -eq 0) "Busy npm retry path failed: $($busyNpm.Output)"
@@ -225,8 +241,8 @@ try {
   Assert-True ($versionFailure.Output -notmatch 'CLI installed') 'A failed version check must not report installation success.'
 
   $oldCli = Invoke-InstallerCase 'old-cli' $node22 $npmCurrent $shiliuTooOld
-  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.3.10 must fail installation.'
-  Assert-True ($oldCli.Output -match '1\.3\.10 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
+  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.3.11 must fail installation.'
+  Assert-True ($oldCli.Output -match '1\.3\.11 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
   Assert-True ($oldCli.Output -notmatch 'CLI installed') 'An old CLI must not report installation success.'
 
   $unparseableCli = Invoke-InstallerCase 'unparseable-cli' $node22 $npmCurrent $shiliuUnparseable
