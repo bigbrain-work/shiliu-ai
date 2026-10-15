@@ -50,7 +50,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 18.14.1
           cache: npm
           cache-dependency-path: npm/mcp-connect/package-lock.json
 
@@ -59,6 +59,21 @@ jobs:
           npm ci --prefix npm/mcp-connect
           npm test --prefix npm/mcp-connect
           npm run pack:check --prefix npm/mcp-connect
+
+      - name: Install the packaged CLI with strict minimum-runtime engines
+        working-directory: npm/mcp-connect
+        run: |
+          tarball="$(npm pack --silent)"
+          cold_prefix="$(mktemp -d)"
+          npm install --prefix "$cold_prefix" --engine-strict --no-fund "$PWD/$tarball"
+          npm audit --prefix "$cold_prefix" --audit-level=moderate
+          cold_cli="$cold_prefix/node_modules/.bin/shiliu"
+          "$cold_cli" --version
+          "$cold_cli" skill install --agent claude-code --scope user --dry-run --json --home "$cold_prefix/isolated-user"
+          mkdir "$cold_prefix/project"
+          (cd "$cold_prefix/project" && "$cold_cli" skill refresh --force --json --home "$cold_prefix/isolated-user")
+          test ! -e "$cold_prefix/isolated-user"
+          test -z "$(find "$cold_prefix/project" -mindepth 1 -print -quit)"
 
   windows-validate:
     runs-on: windows-latest

@@ -17,6 +17,7 @@
 - 默认凭据锁按 `os.homedir()` 定位，CLI 的 `--home` 不会改变锁目录；测试在隔离目录中验证，不影响生产的共享锁。
 - 拒绝非法 tar 条目时通过 Promise 报错并清理 staging，不在 tar 回调里向事件循环抛异常。
 - SDK 升到 1.32.1，fast-uri / ip-address / proxy-addr 更新到兼容修复版；当前候选 npm audit 为 0，131 项完整测试及最低 Node 18.14.1 验证通过。逐项引入链和适用性结论在依赖评估中记录。
+- 固定 Node 18 兼容的 @hono/node-server 1.19.17，避免全新消费安装解析到要求 Node 20 的 2.x；CI 增加精确最低版本下的严格 engines 打包安装验证。
 
 旧用户更新后应分别核对 `shiliu --version` 和 MCP 重连。CLI 无法可靠推断其他 PATH/Node/npm 前缀下的全局命令版本，故不作虚假的自动升级判断。
 

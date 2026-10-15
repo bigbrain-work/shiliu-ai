@@ -36,6 +36,10 @@
 
 升级保留 SDK 1.x，不改变产品参数、认证存储和代理协议。SDK 1.32.1 声明 Node >=18；完整 131 项测试在 Node 22.16.0 通过，最低 Node 18.14.1 全部 26 个测试文件通过。三个传递包只做兼容范围内的锁文件更新，没有运行自动 audit fix，也没有升到 fast-uri 4.x。原有 proper-lockfile 四包仍无本次 audit 告警。
 
+另有冷安装与开发锁文件的差异：SDK 允许 `@hono/node-server` 的 1.x 或 2.x；在 Node 22 全新消费安装时实际选中了要求 Node >=20 的 2.1.5，而 npm ci 保留 1.x，这会让不同安装运行时得到不同的 engines 支持范围。为维持完整依赖树的 Node 18.14.1 契约，CLI 直接精确固定兼容的 `@hono/node-server@1.19.17`；它满足 SDK 的范围，并在全新消费安装中被 SDK 复用，没有加载新的 HTTP 服务端路径。
+
+已复现未加约束的候选在 Node 18.14.1 + npm 9.9.4 + --engine-strict 冷安装时因 Hono 2.1.5 报 EBADENGINE。同环境从约束后的新 tarball 全新安装成功，实际树只有 Hono node-server 1.19.17，audit 为 0、9 个入口检查通过、未登记项目摘要不变。CI 的 Node 18 任务也改为精确 18.14.1，并增加打包后严格 engines 冷安装、audit 和无写入 smoke，避免仅靠 npm ci 掩盖消费解析差异。此约束不表示没有它时所有 Node 18 用户必然安装失败。
+
 发布判断：四项已知告警在当前候选依赖树中已消除，代码及证据交复核后再决定发布。实际重新打包、全新前缀安装得到同样的四个修复版本，消费者依赖树 audit 也为 0；9 个入口检查通过，未登记 Git 项目的文件摘要不变，未创建隔离 home。公开包安装仍需重新审计，不能用本地结果代替发布后的消费者解析结果。发布工作流已在 npm publish 前加入 audit 门禁，moderate 及以上告警会阻止发布；没有把零告警等同于不存在未知漏洞。
 
 复核证据包括交付目录中的 dependency-chains-before.json、dependency-explain-after.json、dependency-chains-after.json、dependency-audit-after.json、dependency-runtime-after/ 及对应测试输出；原始 audit 和新增锁库元数据也保留。正式发布时将最终依赖树、audit 和包摘要与发布证据一并保存。

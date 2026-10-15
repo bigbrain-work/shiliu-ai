@@ -48,7 +48,7 @@ $coldCli = Join-Path $coldInstallPrefix 'node_modules/.bin/shiliu.cmd'
 & $coldCli skill install --agent claude-code --scope user --dry-run --json --home $isolatedUserDirectory
 ```
 
-验收：确为 1.3.12；公开 tarball 完整性匹配 npm 元数据；包文件与冻结提交一致；解析 SDK 1.32.1 及修复后的传递依赖，audit 无这四项告警；dry-run 指向隔离用户 `.claude/skills/shiliu-ai-mcp`，不创建该路径。
+验收：确为 1.3.12；公开 tarball 完整性匹配 npm 元数据；包文件与冻结提交一致；解析 SDK 1.32.1、@hono/node-server 1.19.17 及修复后的传递依赖，audit 无这四项告警；dry-run 指向隔离用户 `.claude/skills/shiliu-ai-mcp`，不创建该路径。另用 Node 18.14.1 + npm 9.9.4 对公开包执行 --engine-strict 全新安装，不用开发锁文件代替该验收。
 
 再从一个从未登记的新 Git 项目执行以下命令，命令工作目录必须切到 `$unregisteredProject`。事前/事后保存包含隐藏文件的文件清单及摘要：
 
