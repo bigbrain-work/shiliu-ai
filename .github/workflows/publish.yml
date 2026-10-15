@@ -37,6 +37,7 @@ jobs:
       - name: Install, test, and inspect package
         run: |
           npm ci --prefix npm/mcp-connect
+          npm audit --prefix npm/mcp-connect --audit-level=moderate
           npm test --prefix npm/mcp-connect
           npm run pack:check --prefix npm/mcp-connect
 

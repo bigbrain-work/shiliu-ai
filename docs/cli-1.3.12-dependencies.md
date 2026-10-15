@@ -21,17 +21,21 @@
 
 包分发需要区分：我们自己的 npm tarball 不内嵌这四个 node_modules，npm 会根据 dependencies 安装。proper-lockfile 的三个传递依赖声明为范围，消费者安装不会采用本仓库 package-lock.json。因此不能把本地解析版本当成未来每次消费安装都严格固定的版本；公开 npm 验收时要重新核对实际依赖树和 audit。
 
-## 四项既有告警
+## 四项告警的发布前结论
 
-本次重新执行 npm audit，结果仍为 1 critical、1 high、2 moderate。下面四个版本都与本次分支基线 origin/main 相同；本批没有升级或消除这些告警。
+最初候选存在 1 critical、1 high、2 moderate；2026-10-15 已逐项核对引入链及运行路径，并在 1.3.12 候选内升级。当前 package-lock 的 npm audit 为 **0 告警**。不以“历史已有”或“未观察到调用”为理由保留易修复的旧版本。
 
-| 包 | 本地版本 | npm audit 等级 | 已知核对范围 |
-| --- | --- | --- | --- |
-| @modelcontextprotocol/sdk | 1.29.0 | high | 告警涉及 OAuth 客户端把凭据发送给服务端指定的授权服务器 |
-| proxy-addr | 2.0.7 | critical | 告警涉及 IPv4-mapped IPv6 信任子网的地址伪装 |
-| fast-uri | 3.1.7 | moderate | 告警涉及百分号编码字符的主机名大小写规范化 |
-| ip-address | 10.7.0 | moderate | 告警涉及跨地址族子网判断及长输入解析诊断的资源消耗 |
+| 包 | 引入链 | 旧版本 → 候选版本 | 修复下限 / 来源 | 当前 stdio 路径结论 |
+| --- | --- | --- | --- | --- |
+| @modelcontextprotocol/sdk | CLI 直接依赖 | 1.29.0 → 1.32.1 | >=1.31.0，[SDK 公告](https://github.com/advisories/GHSA-6qxp-vccf-f47h) | 桥接也有上游 HTTP 客户端，不能仅因本地 stdio 就判无影响；核对 remote-client.js 只设置 Bearer header，没有 authProvider、withOAuth 或直接 auth/fetchToken 调用，自有 DeviceAuthClient 独立向配置的授权端点刷新，不使用 SDK OAuth 发行者发现。告警所述跨发行者 OAuth 分支未启用，仍升级以消除依赖风险。 |
+| fast-uri | CLI/SDK → ajv@8.20.0 → fast-uri | 3.1.7 → 3.1.8 | 3.x >=3.1.8，[规范化公告](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) | **会执行**：AJV 编译/解析工具 JSON Schema 时调用 parse、serialize、resolve。未发现 CLI 用其结果做网络主机白名单；端点检查使用 URL，但不能把该库认作未加载，因此采用兼容补丁。 |
+| proxy-addr | SDK → express@5.2.1 → proxy-addr | 2.0.7 → 2.0.8 | >=2.0.8，[代理信任公告](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) | 属于 Express HTTP 服务端 req.ip/信任代理路径。产品启动 StdioServerTransport，不创建 Express 应用，也没有 trust proxy 配置；已测 stdio 初始化、工具清单和调用未加载该包。仍更新锁文件到修复版。 |
+| ip-address | SDK → express-rate-limit@8.7.0 → ip-address | 10.7.0 → 10.7.4 | 两项公告均 >=10.7.1，[地址族判断](https://github.com/advisories/GHSA-j6r3-76f7-8jcv)、[长输入诊断](https://github.com/advisories/GHSA-h3mg-xc3c-68pw) | 产品没有创建 SDK 的 Express 限流路由，也不解析入站 HTTP 客户端 IP；已测 stdio 路径未加载该包。仍更新兼容的 10.x 修复版本。 |
 
-这里只记录 audit 报告的受影响行为，没有完成当前 CLI 的全部调用路径可达性证明，也不将“历史已有”当作安全放行理由。合入判断与发布判断分开：这次 P1 修复可单独复核；正式发布前需对上述告警给出适用性判断或升级修复方案，并按实际变更验证兼容性。不要未经核对直接运行 npm audit fix 或混入无关 SDK 升级。
+核对方法包括本地源码导入/调用检查、npm explain 和运行观测。隔离的真实 stdio 子进程经本地模拟远端完成 initialize、tools/list、echo 调用，并在加载/调用处记录包名和函数次数；fast-uri 被调用，Express、express-rate-limit、proxy-addr、ip-address 未加载。另覆盖 CLI 参数校验测试。该观测不等于证明未来新增的所有路径都不可达；使用的是本地合成凭据，没有连接真实 OAuth/生产服务。SDK 的 OAuth 凭据 issuer 迁移不适用于当前自有 device token 存储，未来引入 SDK OAuth 时必须重新评估。
 
-复核证据保存在本次本地交付目录的 `proper-lockfile-registry.json`、`lock-dependencies.json`、`npm-audit-followup.json` 和 `dependency-baseline.json`；正式发布时将最终依赖树、audit 和包摘要与发布证据一并保存。
+升级保留 SDK 1.x，不改变产品参数、认证存储和代理协议。SDK 1.32.1 声明 Node >=18；完整 131 项测试在 Node 22.16.0 通过，最低 Node 18.14.1 全部 26 个测试文件通过。三个传递包只做兼容范围内的锁文件更新，没有运行自动 audit fix，也没有升到 fast-uri 4.x。原有 proper-lockfile 四包仍无本次 audit 告警。
+
+发布判断：四项已知告警在当前候选依赖树中已消除，代码及证据交复核后再决定发布。实际重新打包、全新前缀安装得到同样的四个修复版本，消费者依赖树 audit 也为 0；9 个入口检查通过，未登记 Git 项目的文件摘要不变，未创建隔离 home。公开包安装仍需重新审计，不能用本地结果代替发布后的消费者解析结果。发布工作流已在 npm publish 前加入 audit 门禁，moderate 及以上告警会阻止发布；没有把零告警等同于不存在未知漏洞。
+
+复核证据包括交付目录中的 dependency-chains-before.json、dependency-explain-after.json、dependency-chains-after.json、dependency-audit-after.json、dependency-runtime-after/ 及对应测试输出；原始 audit 和新增锁库元数据也保留。正式发布时将最终依赖树、audit 和包摘要与发布证据一并保存。
