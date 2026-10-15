@@ -14,6 +14,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { withCredentialRefreshLock } from "../src/credential-refresh-lock.js";
+import { resolveAuthorization } from "../src/authorization.js";
+import { createProxySession } from "../src/proxy-session.js";
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "shiliu-refresh-process-"));
@@ -31,12 +33,22 @@ async function fixture(t) {
   );
   return root;
 }
-function child(root, url, mode) {
+function child(root, url, mode, slot) {
   return new Promise((resolve, reject) => {
     const process = spawn(
       globalThis.process.execPath,
-      [path.resolve("test-support/refresh-process.js"), root, url, mode],
-      { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+      [
+        path.resolve("test-support/refresh-process.js"),
+        root,
+        url,
+        mode,
+        path.join(root, `cli-${slot}`),
+      ],
+      {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...globalThis.process.env, HOME: root, USERPROFILE: root },
+      },
     );
     let stdout = "",
       stderr = "";
@@ -60,7 +72,7 @@ function child(root, url, mode) {
     });
   });
 }
-for (const mode of ["locked", "legacy"])
+for (const mode of ["locked", "legacy", "default-home"])
   test(
     `two processes recover to ready with ${mode} refresh`,
     { timeout: 15000 },
@@ -104,14 +116,22 @@ for (const mode of ["locked", "legacy"])
       try {
         const url = `http://127.0.0.1:${server.address().port}`;
         const results = await Promise.all([
-          child(root, url, mode),
-          child(root, url, mode),
+          child(root, url, mode, "a"),
+          child(root, url, mode, "b"),
         ]);
         for (const result of results) {
           assert.equal(result.status, "ready");
           assert.equal(result.business_tool_count, 1);
         }
-        assert.equal(calls, mode === "locked" ? 1 : 2);
+        assert.equal(calls, mode === "legacy" ? 2 : 1);
+        if (mode === "default-home") {
+          assert.deepEqual(await readdir(path.join(root, ".shiliu-ai")), []);
+          for (const slot of ["a", "b"]) {
+            await assert.rejects(readdir(path.join(root, `cli-${slot}`)), {
+              code: "ENOENT",
+            });
+          }
+        }
         assert.equal(
           JSON.parse(
             await readFile(
@@ -153,3 +173,110 @@ test("lock releases after refresh failure and stale process locks can be recover
     "recovered",
   );
 });
+
+test(
+  "a held refresh lock reports credential unavailable, deduplicates polls and recovers without login",
+  { timeout: 5000 },
+  async (t) => {
+    const root = await fixture(t);
+    let acquired, unblock;
+    const ready = new Promise((resolve) => {
+      acquired = resolve;
+    });
+    const held = new Promise((resolve) => {
+      unblock = resolve;
+    });
+    const owner = withCredentialRefreshLock(
+      async () => {
+        acquired();
+        await held;
+      },
+      { home: root },
+    );
+    await ready;
+    let reads = 0,
+      refreshes = 0,
+      connections = 0,
+      lockError;
+    let stored = {
+      accessToken: "synthetic-old",
+      refreshToken: "synthetic-spent",
+      expiresAt: 0,
+    };
+    const diagnostics = [];
+    const session = createProxySession({
+      resolveAuth: () =>
+        resolveAuthorization({
+          home: path.join(root, "alternate-cli-home"),
+          tokenStore: {
+            load: async () => {
+              reads++;
+              return stored;
+            },
+            save: async (value) => {
+              stored = value;
+            },
+          },
+          authClient: {
+            refresh: async () => {
+              refreshes++;
+              return {
+                access_token: "synthetic-new",
+                refresh_token: "synthetic-next",
+                expires_in: 3600,
+              };
+            },
+          },
+          // Use the real lock implementation with no retries to exercise exhaustion promptly.
+          withRefreshLock: (operation) =>
+            withCredentialRefreshLock(operation, {
+              home: root,
+              retries: 0,
+            }).catch((error) => {
+              lockError = error;
+              throw error;
+            }),
+        }),
+      reportDiagnostic: (code) => diagnostics.push(code),
+      connectRemote: async () => {
+        connections++;
+        return {
+          getServerCapabilities: () => ({ tools: {} }),
+          listTools: async () => ({ tools: [{ name: "echo" }] }),
+          close: async () => {},
+        };
+      },
+    });
+    try {
+      const first = session.refresh();
+      assert.equal(session.refresh(), first);
+      await first;
+      assert.equal(lockError.code, "ELOCKED");
+      assert.equal(reads, 1);
+      assert.equal(refreshes, 0);
+      assert.equal(connections, 0);
+      assert.equal(session.snapshot().code, "CREDENTIAL_UNAVAILABLE");
+      assert.equal(session.snapshot().status, "credential_unavailable");
+      assert.equal(session.snapshot().mcp_connected, true);
+      assert.equal(diagnostics.includes("AUTH_EXPIRED"), false);
+      assert.doesNotMatch(
+        JSON.stringify(session.snapshot()),
+        /synthetic-|扫码/u,
+      );
+      unblock();
+      await owner;
+      await session.refresh();
+      assert.equal(session.snapshot().code, "CONNECTION_READY");
+      assert.equal(refreshes, 1);
+      assert.equal(connections, 1);
+      assert.deepEqual(
+        session.tools().map((tool) => tool.name),
+        ["echo"],
+      );
+    } finally {
+      unblock();
+      await owner;
+      await session.close();
+    }
+  },
+);
