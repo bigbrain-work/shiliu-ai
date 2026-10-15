@@ -57,7 +57,7 @@ npm install --global @bigbrain-work/mcp-connect@latest --prefer-online || fail "
 
 command -v shiliu >/dev/null 2>&1 || fail "The shiliu command is not on PATH. Open a new terminal and retry."
 shiliu_version=$(shiliu --version) || fail "shiliu --version returned a non-zero exit code. CLI installation could not be verified."
-require_minimum_version "$shiliu_version" 1 3 11 "Shiliu AI CLI"
+require_minimum_version "$shiliu_version" 1 3 12 "Shiliu AI CLI"
 
 printf '%s\n' "Verifying the actual npx MCP launch (initialize + tools/list)..."
 shiliu doctor --transport stdio --standard-only --prepare --json || fail "CLI launch verification failed. Repair the identified Shiliu npx entry before reconnecting; do not clear credentials."

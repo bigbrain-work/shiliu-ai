@@ -84,6 +84,9 @@ export function parseCliArguments(args) {
       scope: {
         type: "string",
       },
+      "target-dir": {
+        type: "string",
+      },
       session: {
         type: "string",
       },
@@ -184,8 +187,25 @@ export function parseCliArguments(args) {
   ) {
     throw new Error("--scope 仅适用于 shiliu skill install");
   }
-  if (command === "skill" && subcommand === "install" && !agent) {
-    throw new Error("shiliu skill install 需要 --agent <Skill客户端标识>");
+  const skillTargetDirectory = parsed.values["target-dir"];
+  if (
+    skillTargetDirectory !== undefined &&
+    !(command === "skill" && subcommand === "install")
+  ) {
+    throw new Error("--target-dir 仅适用于 shiliu skill install");
+  }
+  if (
+    command === "skill" &&
+    subcommand === "install" &&
+    !agent &&
+    !skillTargetDirectory
+  ) {
+    throw new Error(
+      "shiliu skill install 需要 --agent <Skill客户端标识> 或 --target-dir <Skill父目录>",
+    );
+  }
+  if (command === "skill" && subcommand === "install" && agent && skillTargetDirectory) {
+    throw new Error("--agent 和 --target-dir 是两种安装方式，不能同时使用");
   }
   if (command === "skill" && subcommand === "refresh" && agent) {
     throw new Error("Skill 刷新会使用已记录目标，不接受 --agent");
@@ -217,6 +237,7 @@ export function parseCliArguments(args) {
     argumentsStdin: parsed.values["args-stdin"],
     outputPath: parsed.values.out,
     skillScope: skillScope || "project",
+    skillTargetDirectory,
     session,
     json: parsed.values.json,
     help: parsed.values.help,

@@ -43,6 +43,9 @@ shiliu skill refresh
 shiliu skill install --agent codex --scope project
 shiliu skill install --agent claude-code --scope user
 
+# 其他客户端自行确定 Skill 父目录；CLI 从官网校验、安装并记录真实路径
+shiliu skill install --target-dir <CLIENT_SKILL_PARENT> --scope user
+
 # 人工忽略冷却并立即重试
 shiliu skill refresh --force
 

@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
   mkdir,
   open,
@@ -7,11 +6,20 @@ import {
   stat,
   unlink,
   writeFile,
+  realpath,
 } from "node:fs/promises";
 import path from "node:path";
-
+import { installSkillArchive } from "./direct-skill-install.js";
+import {
+  SHILIU_SKILL_NAME,
+  clientSkillDirectory,
+  validSkill,
+  isInside,
+  registeredTargets,
+  findUnmanagedSkills,
+} from "./skill-targets.js";
+export { SHILIU_SKILL_NAME } from "./skill-targets.js";
 export const SKILL_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
-export const SHILIU_SKILL_NAME = "shiliu-ai-mcp";
 export const SHILIU_SKILL_SOURCE = "https://bigbrain.work/shiliuAI";
 const STALE_LOCK_MS = 15 * 60 * 1000;
 
@@ -61,7 +69,11 @@ async function acquireLock(home, retried = false) {
 async function readState(home) {
   try {
     const value = JSON.parse(await readFile(stateFile(home), "utf8"));
-    if (value?.version === 1 && value.scopes && typeof value.scopes === "object") {
+    if (
+      value?.version === 1 &&
+      value.scopes &&
+      typeof value.scopes === "object"
+    ) {
       return value;
     }
   } catch (error) {
@@ -86,157 +98,113 @@ async function writeState(home, state) {
   }
 }
 
-function targetRoot({ home, cwd, scope }) {
-  return path.resolve(scope === "user" ? home : cwd);
-}
-
-function targetKey({ home, cwd, scope }) {
-  const root = targetRoot({ home, cwd, scope });
+function scopeKey(root, scope) {
   return scope === "user" ? `user:${root}` : root;
 }
 
-function skillInstallPath(root) {
-  return path.join(root, ".agents", "skills", SHILIU_SKILL_NAME);
-}
-
-async function verifySkillInstall(installPath) {
-  try {
-    const metadata = await stat(path.join(installPath, "SKILL.md"));
-    return metadata.isFile();
-  } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
-  }
-}
-
-function isPathInside(candidate, root) {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
-function selectRefreshEntry(state, { home, cwd }) {
-  const absoluteCwd = path.resolve(cwd);
+function selectEntry(state, home, cwd) {
   const projects = Object.entries(state.scopes)
-    .filter(([, entry]) => {
-      const target = entry?.target;
-      return (
-        target?.scope === "project" &&
-        typeof target.root === "string" &&
-        isPathInside(absoluteCwd, path.resolve(target.root))
-      );
-    })
-    .sort(
-      ([, left], [, right]) =>
-        path.resolve(right.target.root).length - path.resolve(left.target.root).length,
-    );
-  if (projects.length > 0) return projects[0];
-  const userEntry = state.scopes[targetKey({ home, cwd, scope: "user" })];
-  if (userEntry?.target?.scope === "user") {
-    return [targetKey({ home, cwd, scope: "user" }), userEntry];
-  }
-  const legacyKey = path.resolve(cwd);
-  return [legacyKey, state.scopes[legacyKey] || {}];
-}
-
-export function runSkillUpdate({
-  cwd,
-  agent,
-  scope = "project",
-  platform = process.platform,
-  env = process.env,
-  spawnImpl = spawnSync,
-}) {
-  if (agent && !/^[a-z0-9][a-z0-9_-]{0,63}$/u.test(agent)) {
-    throw new Error("Skill 客户端标识格式无效");
-  }
-  const isWindows = platform === "win32";
-  const targetArguments = [
-    "--skill",
-    SHILIU_SKILL_NAME,
-    ...(agent ? ["-a", agent] : []),
-    ...(scope === "user" ? ["-g"] : []),
-    "-y",
+    .filter(
+      ([, entry]) =>
+        entry?.target?.scope === "project" &&
+        path.isAbsolute(entry.target.root || "") &&
+        isInside(cwd, entry.target.root),
+    )
+    .sort(([, a], [, b]) => b.target.root.length - a.target.root.length);
+  if (projects.length) return projects[0];
+  const key = scopeKey(path.resolve(home), "user");
+  return [
+    key,
+    state.scopes[key]?.target?.scope === "user" ? state.scopes[key] : undefined,
   ];
-  const command = isWindows ? env.ComSpec || "cmd.exe" : "npx";
-  const args = isWindows
-    ? [
-        "/d",
-        "/s",
-        "/c",
-        `npx.cmd -y skills add ${SHILIU_SKILL_SOURCE} ${targetArguments.join(" ")}`,
-      ]
-    : ["-y", "skills", "add", SHILIU_SKILL_SOURCE, ...targetArguments];
-  const result = spawnImpl(
-    command,
-    args,
-    {
-      cwd,
-      encoding: "utf8",
-      windowsHide: true,
-      shell: false,
-      maxBuffer: 1024 * 1024,
-    },
-  );
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      result.stderr?.trim() ||
-        result.stdout?.trim() ||
-        `skills add 返回退出码 ${result.status}`,
-    );
-  }
-  return { stdout: result.stdout || "", stderr: result.stderr || "" };
 }
 
 export async function installShiliuSkill({
   home,
   cwd = process.cwd(),
+  env = process.env,
   agent,
   scope = "project",
+  targetDirectory,
   now = Date.now(),
   dryRun = false,
-  runUpdate = runSkillUpdate,
-  verifyInstall = verifySkillInstall,
+  directInstall = installSkillArchive,
 } = {}) {
   if (!home) throw new Error("缺少用户目录，无法记录 Skill 安装目标");
-  if (!agent) throw new Error("缺少 Skill 客户端标识");
-  if (!["project", "user"].includes(scope)) {
+  if (!["project", "user"].includes(scope))
     throw new Error("Skill 安装范围只能是 project 或 user");
-  }
-  const root = targetRoot({ home, cwd, scope });
-  const key = targetKey({ home, cwd, scope });
-  const installPath = skillInstallPath(root);
-  if (dryRun) {
-    return {
-      status: "dry_run",
-      agent,
-      scope,
-      root,
-      installPath,
-      installedAt: null,
-      refreshTargetRecorded: false,
-    };
-  }
+  if ((!agent && !targetDirectory) || (agent && targetDirectory))
+    throw new Error("请选择 --agent 或 --target-dir 中的一种安装方式");
+  const root = path.resolve(scope === "user" ? home : cwd);
+  const parent = targetDirectory
+    ? path.resolve(cwd, targetDirectory)
+    : clientSkillDirectory({ agent, scope, home, cwd, env });
+  const installPath = path.join(parent, SHILIU_SKILL_NAME);
+  const description = {
+    agent: agent || null,
+    scope,
+    root,
+    targetDirectory: parent,
+    installPath,
+    installMethod: "direct_website",
+    refreshTargetRecorded: false,
+  };
+  if (dryRun) return { status: "dry_run", ...description, installedAt: null };
   const releaseLock = await acquireLock(home);
-  if (!releaseLock) throw new Error("另一个石榴 Skill 操作正在进行，请稍后重试");
+  if (!releaseLock)
+    throw new Error("另一个石榴 Skill 操作正在进行，请稍后重试");
   try {
-    await runUpdate({ cwd: root, agent, scope });
-    if (!(await verifyInstall(installPath))) {
+    const installed = await directInstall({
+      targetDirectory: parent,
+      sourceBaseUrl: SHILIU_SKILL_SOURCE,
+      skillName: SHILIU_SKILL_NAME,
+    });
+    if (
+      path.resolve(installed.installPath) !== installPath ||
+      !(await validSkill(installPath))
+    ) {
       throw new Error(
-        `skills add 已结束，但未在预期位置找到 ${path.join(installPath, "SKILL.md")}`,
+        `未在预期位置找到有效的 ${SHILIU_SKILL_NAME}：${installPath}`,
       );
     }
-    const installedAt = new Date(now).toISOString();
     const state = await readState(home);
+    const key = scopeKey(root, scope);
     const previous = state.scopes[key] || {};
-    const agents = [...new Set([...(previous.target?.agents || []), agent])].sort();
+    const previousTarget = previous.target || {};
+    const directTargets = (previousTarget.directTargets || []).filter((item) =>
+      agent
+        ? item.agent !== agent
+        : path.resolve(item.installPath) !== installPath,
+    );
+    directTargets.push({
+      agent: agent || null,
+      targetDirectory: parent,
+      installPath,
+      source: installed.source,
+      digest: installed.digest,
+      installMethod: "direct_website",
+    });
+    const stillLegacy = (previousTarget.agents || []).some(
+      (name) => !directTargets.some((item) => item.agent === name),
+    );
+    const installedAt = new Date(now).toISOString();
     state.scopes[key] = {
       ...previous,
       target: {
+        ...previousTarget,
         scope,
         root,
-        installPath,
-        agents,
+        installPath: directTargets[0].installPath,
+        legacyInstallPath: stillLegacy
+          ? previousTarget.legacyInstallPath || previousTarget.installPath
+          : undefined,
+        agents: [
+          ...new Set([
+            ...(previousTarget.agents || []),
+            ...(agent ? [agent] : []),
+          ]),
+        ],
+        directTargets,
       },
       lastAttemptAt: installedAt,
       lastSuccessAt: installedAt,
@@ -244,105 +212,181 @@ export async function installShiliuSkill({
     await writeState(home, state);
     return {
       status: "installed",
-      agent,
-      scope,
-      root,
-      installPath,
+      ...description,
       installedAt,
+      source: installed.source,
+      digest: installed.digest,
       refreshTargetRecorded: true,
+      unmanagedInstallations: await findUnmanagedSkills({
+        state,
+        home,
+        cwd,
+        env,
+      }),
     };
   } finally {
     await releaseLock();
   }
 }
 
-function validTimestamp(value) {
-  const timestamp = Date.parse(value || "");
-  return Number.isFinite(timestamp) ? timestamp : null;
+async function inspectEntry(entry, options) {
+  const resolved = registeredTargets(entry.target, options);
+  if (resolved.issues.length)
+    return {
+      reason: "target_migration_required",
+      issues: resolved.issues,
+      installCommands: resolved.issues.flatMap((issue) => {
+        const agent = issue.split(":")[1];
+        return ["codex", "cursor", "claude-code"].includes(agent)
+          ? [
+              {
+                cwd: entry.target.root,
+                command: [
+                  "shiliu",
+                  "skill",
+                  "install",
+                  "--agent",
+                  agent,
+                  "--scope",
+                  entry.target.scope,
+                  "--json",
+                ],
+              },
+            ]
+          : [];
+      }),
+    };
+  for (const target of resolved.targets) {
+    if (!(await validSkill(target.installPath)))
+      return {
+        reason: "target_missing",
+        installPath: target.installPath,
+        installCommands: [
+          {
+            cwd: entry.target.root,
+            command: [
+              "shiliu",
+              "skill",
+              "install",
+              "--target-dir",
+              target.targetDirectory,
+              "--scope",
+              entry.target.scope,
+              "--json",
+            ],
+          },
+        ],
+      };
+  }
+  return resolved;
 }
 
 export async function refreshShiliuSkill({
   home,
   cwd = process.cwd(),
+  env = process.env,
   now = Date.now(),
   force = false,
   intervalMs = SKILL_REFRESH_INTERVAL_MS,
-  runUpdate = runSkillUpdate,
-  verifyInstall = verifySkillInstall,
+  directInstall = installSkillArchive,
 } = {}) {
   if (!home) throw new Error("缺少用户目录，无法记录 Skill 检查时间");
   const state = await readState(home);
-  const [, previous] = selectRefreshEntry(state, { home, cwd });
-  const lastAttemptAt = validTimestamp(previous.lastAttemptAt);
-  if (!force && lastAttemptAt !== null && now - lastAttemptAt < intervalMs) {
+  const [, entry] = selectEntry(state, home, cwd);
+  if (!entry)
+    return {
+      status: "skipped",
+      reason: "target_not_registered",
+      target: null,
+      unmanagedInstallations: await findUnmanagedSkills({
+        state,
+        home,
+        cwd,
+        env,
+      }),
+    };
+  const initial = await inspectEntry(entry, { home, cwd, env });
+  if (initial.reason)
+    return {
+      status: "skipped",
+      ...initial,
+      target: entry.target,
+      action:
+        "请显式运行 shiliu skill install 登记正确路径；refresh 不补装、不迁移安装目录。",
+    };
+  const previousAttempt = Date.parse(entry.lastAttemptAt || "");
+  if (
+    !force &&
+    Number.isFinite(previousAttempt) &&
+    now - previousAttempt < intervalMs
+  ) {
     return {
       status: "skipped",
       reason: "within_interval",
-      nextCheckAt: new Date(lastAttemptAt + intervalMs).toISOString(),
-      target: previous.target || null,
+      nextCheckAt: new Date(previousAttempt + intervalMs).toISOString(),
+      target: entry.target,
     };
   }
-
   const releaseLock = await acquireLock(home);
-  if (!releaseLock) {
-    return {
-      status: "skipped",
-      reason: "refresh_in_progress",
-    };
-  }
-
+  if (!releaseLock) return { status: "skipped", reason: "refresh_in_progress" };
   try {
-    const latestState = await readState(home);
-    const [latestScopeKey, latestPrevious] = selectRefreshEntry(latestState, {
-      home,
-      cwd,
-    });
-    const latestAttemptAt = validTimestamp(latestPrevious.lastAttemptAt);
+    const latest = await readState(home);
+    const [key, current] = selectEntry(latest, home, cwd);
+    if (!current)
+      return {
+        status: "skipped",
+        reason: "target_not_registered",
+        target: null,
+      };
+    const inspection = await inspectEntry(current, { home, cwd, env });
+    if (inspection.reason)
+      return { status: "skipped", ...inspection, target: current.target };
+    const lastAttempt = Date.parse(current.lastAttemptAt || "");
     if (
       !force &&
-      latestAttemptAt !== null &&
-      now - latestAttemptAt < intervalMs
+      Number.isFinite(lastAttempt) &&
+      now - lastAttempt < intervalMs
     ) {
       return {
         status: "skipped",
         reason: "within_interval",
-        nextCheckAt: new Date(latestAttemptAt + intervalMs).toISOString(),
-        target: latestPrevious.target || null,
+        target: current.target,
       };
     }
-
     const attemptedAt = new Date(now).toISOString();
-    latestState.scopes[latestScopeKey] = {
-      ...latestPrevious,
-      lastAttemptAt: attemptedAt,
-    };
-    await writeState(home, latestState);
-
+    current.lastAttemptAt = attemptedAt;
+    await writeState(home, latest);
     try {
-      const target = latestPrevious.target;
-      if (target) {
-        for (const agent of target.agents) {
-          await runUpdate({
-            cwd: target.root,
-            agent,
-            scope: target.scope,
-          });
-        }
-        if (!(await verifyInstall(target.installPath))) {
-          throw new Error(
-            `刷新命令已结束，但未在记录位置找到 ${path.join(target.installPath, "SKILL.md")}`,
-          );
-        }
-      } else {
-        await runUpdate({ cwd: path.resolve(cwd) });
+      const updated = new Map();
+      for (const target of inspection.targets) {
+        // Existing symlinked targets share one physical installation; do not replace their links.
+        const storage = await realpath(target.installPath);
+        if (path.basename(storage) !== SHILIU_SKILL_NAME)
+          throw new Error("Skill 链接目标名称不匹配，请显式安装到正确目录");
+        const result =
+          updated.get(storage) ||
+          (await directInstall({
+            targetDirectory: path.dirname(storage),
+            sourceBaseUrl: SHILIU_SKILL_SOURCE,
+            skillName: SHILIU_SKILL_NAME,
+            requireExisting: true,
+          }));
+        if (
+          path.resolve(result.installPath) !== storage ||
+          !(await validSkill(target.installPath))
+        )
+          throw new Error("Skill 刷新目标校验失败");
+        updated.set(storage, result);
+        target.source = result.source;
+        target.digest = result.digest;
       }
-      latestState.scopes[latestScopeKey].lastSuccessAt = attemptedAt;
-      await writeState(home, latestState);
+      current.lastSuccessAt = attemptedAt;
+      await writeState(home, latest);
       return {
         status: "checked",
         checkedAt: attemptedAt,
         nextCheckAt: new Date(now + intervalMs).toISOString(),
-        target: target || null,
+        target: current.target,
       };
     } catch (error) {
       return {
@@ -350,7 +394,7 @@ export async function refreshShiliuSkill({
         checkedAt: attemptedAt,
         nextCheckAt: new Date(now + intervalMs).toISOString(),
         message: error.message,
-        target: latestPrevious.target || null,
+        target: current.target,
       };
     }
   } finally {
@@ -360,36 +404,32 @@ export async function refreshShiliuSkill({
 
 export async function printSkillInstall(options = {}) {
   const result = await installShiliuSkill(options);
-  if (options.json) {
-    console.log(JSON.stringify(result, null, 2));
-    return result;
-  }
-  console.log(
-    result.status === "dry_run"
-      ? `演练模式：将为客户端 ${result.agent} 把石榴 Skill 安装到 ${result.installPath}（${result.scope} 范围），未执行安装或记录刷新目标。`
-      : `石榴 Skill 已安装到 ${result.installPath}（${result.scope} 范围，客户端 ${result.agent}），后续刷新目标已记录。`,
-  );
+  if (options.json) console.log(JSON.stringify(result, null, 2));
+  else
+    console.log(
+      `${result.status === "dry_run" ? "演练模式，未安装：" : "Skill 已安装并登记："}${result.installPath}（${result.scope}，direct_website）`,
+    );
   return result;
 }
 
 export async function printSkillRefresh(options = {}) {
   const result = await refreshShiliuSkill(options);
-  if (options.json) {
-    console.log(JSON.stringify(result, null, 2));
-    return result;
-  }
-  if (result.status === "skipped") {
+  if (options.json) console.log(JSON.stringify(result, null, 2));
+  else if (result.reason === "target_not_registered")
+    console.log("未登记刷新目标；继续使用当前可用能力，未执行安装。");
+  else if (
+    result.reason === "target_missing" ||
+    result.reason === "target_migration_required"
+  )
     console.log(
-      result.reason === "refresh_in_progress"
-        ? "另一个石榴 Skill 检查正在进行，本次继续使用已安装 Skill。"
-        : `石榴 Skill 在24小时内已检查，下次检查时间：${result.nextCheckAt}`,
+      "刷新目标缺失或需要迁移，请显式运行 shiliu skill install；未执行安装。",
     );
-  } else if (result.status === "checked") {
-    console.log(`石榴 Skill 检查完成，下次检查时间：${result.nextCheckAt}`);
-  } else {
+  else if (result.status === "failed")
     console.warn(
-      `石榴 Skill 检查失败：${result.message}。已进入24小时冷却，本次继续使用已安装 Skill。`,
+      `石榴 Skill 检查失败：${result.message}。本次继续使用已安装 Skill。`,
     );
-  }
+  else if (result.status === "checked")
+    console.log(`石榴 Skill 检查完成，下次检查时间：${result.nextCheckAt}`);
+  else console.log("刷新已跳过；继续使用已安装 Skill。");
   return result;
 }

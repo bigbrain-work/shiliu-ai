@@ -6,7 +6,7 @@ Use this reference when Shiliu AI MCP is absent or unhealthy.
 
 Read the [canonical Agent installation guide](https://bigbrain.work/shiliuAI/install.txt) and follow its current steps. Do not infer installation steps from the product homepage or substitute an older flow. Resume at the failed stage after diagnosis; do not restart installation or clear credentials by default. Use the verified `shiliu` executable consistently.
 
-The guide owns CLI and Skill installation, nonblocking WeChat authorization, configuration of the current Agent, and completion checks. Skill installer identifiers and Shiliu CLI adapter identifiers can differ; use the mapping in the guide.
+The guide owns CLI and Skill installation, nonblocking WeChat authorization, configuration of the current Agent, and completion checks. Skill installer identifiers and Shiliu CLI adapter identifiers can differ; use the mapping in the guide. CLI 1.3.12 installs the verified website archive directly. For another client, explicitly choose its documented Skill parent with --target-dir. Refresh never installs into unregistered or missing paths; use explicit skill install for migration. During authorized upgrades verify the global shiliu version independently of the npx proxy.
 
 If Skill installation is unavailable but the client supports local stdio MCP, continue MCP setup and report the missing Skill separately. Do not report full completion until the current Agent has loaded the MCP connection and can discover its live tools.
 

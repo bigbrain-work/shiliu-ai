@@ -9,15 +9,15 @@
 
 ## 安装 Skill
 
-可以直接使用：
+先按 https://bigbrain.work/shiliuAI/install.txt 安装或升级官方 CLI，再运行一次当前客户端对应的命令：
 
-```bash
-npx -y skills add https://bigbrain.work/shiliuAI --skill shiliu-ai-mcp -a codex -y
+```text
+shiliu skill install --agent codex --scope project --json
+shiliu skill install --agent claude-code --scope project --json
+shiliu skill install --agent cursor --scope user --json
 ```
 
-将 `codex` 换成 skills CLI 支持的目标名称。Claude Code 在这里使用 `claude-code`，而 `shiliu install` 的对应内置适配器名称是 `claude`。Skill 从石榴 AI 网站的标准 Well-known Skills 入口下载，不依赖 Git、GitHub 或本机 Git 客户端。
-
-石榴 CLI 本身支持 Node.js 18.14.1+ 和 npm 8+；完整安装还会调用当前 `skills` CLI，因此完整流程要求 Node.js 22.20.0+。如果系统没有 Node/npm 或版本不足，建议从 Node.js 官方页面安装 Node.js 24 LTS，官方安装器会同时提供 npm。官方 CLI 安装脚本仍兼容 Node.js 18.14.1+，并会把过旧的 npm 升级到 `npm@9.9.4`。
+三个内置客户端均从官网 HTTPS 索引下载并校验 Skill 归档，不调用外部 skills CLI，不依赖 Git、GitHub 或外部 Skill 安装器。完整 CLI/Skill 流程最低 Node.js 18.14.1，推荐 Node.js 24 LTS。只选择当前客户端和所需 scope 执行一条命令。其他客户端使用显式 `--target-dir`。
 
 ## 配置 MCP
 
@@ -53,7 +53,7 @@ Agent 或其他非阻塞环境应运行 `shiliu login --no-wait --json`。二维
 ## 更新边界
 
 - MCP 工具名称、入参和出参以服务端实时 `tools/list` 为准，服务端更新后不要求用户重装 npm 包或 Skill。
-- 每个用户任务首次调用石榴 MCP 前运行一次 `shiliu skill refresh`；CLI 按项目记录检查时间，24 小时内立即跳过。
+- 每个用户任务首次调用石榴 MCP 前运行一次 `shiliu skill refresh`；CLI 按项目记录检查时间，24 小时内立即跳过。未登记或路径缺失时正常跳过，不安装到新项目；旧用户必须更新全局 CLI，不能只重连 npx 代理。
 - 到期后只检查并更新 `shiliu-ai-mcp`，不会连带更新其他 Skill；成功或失败都会进入 24 小时冷却，网络故障不会拖慢之后的每次任务。
 
 ## 官网发布产物
