@@ -5,6 +5,7 @@ import { lstat, mkdir, open, readFile, realpath, rename, unlink } from "node:fs/
 import { PACKAGE_NAME } from "./constants.js";
 import { launchContext, runNpm } from "./launch-context.js";
 import { verifyStdioLaunch } from "./stdio-probe.js";
+import { inspectRepairLock } from "./repair-lock-state.js";
 
 class RepairError extends Error {
   constructor(reason, exitCode = 2) { super(reason); this.reason = reason; this.exitCode = exitCode; }
@@ -52,19 +53,19 @@ export async function validateCacheEntry(cache, entry) {
 }
 
 // Inspect process command lines locally; never include them in the report.
-export function checkActiveLaunch(entry) {
+export function checkActiveLaunch(entry, { platform = process.platform, spawnImpl = spawnSync } = {}) {
   let rows;
-  if (process.platform === "win32") {
+  if (platform === "win32") {
     const powershell = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-    const script = "$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cmd.exe'\" | Select-Object ProcessId,ParentProcessId,CommandLine) | ConvertTo-Json -Compress";
-    const result = spawnSync(powershell, ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 10000, windowsHide: true });
+    const script = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='cmd.exe'\" | Select-Object ProcessId,ParentProcessId,CommandLine) | ConvertTo-Json -Compress";
+    const result = spawnImpl(powershell, ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 10000, windowsHide: true });
     if (result.error || result.status !== 0) throw new RepairError("PROCESS_CHECK_UNAVAILABLE", 3);
     try {
       const parsed = JSON.parse(result.stdout || "[]");
       rows = (Array.isArray(parsed) ? parsed : [parsed]).map((row) => ({ pid: row.ProcessId, parent: row.ParentProcessId, command: row.CommandLine }));
     } catch { throw new RepairError("PROCESS_CHECK_UNAVAILABLE", 3); }
   } else {
-    const result = spawnSync("ps", ["-eo", "pid=,ppid=,args="], { encoding: "utf8", timeout: 10000 });
+    const result = spawnImpl("ps", ["-eo", "pid=,ppid=,args="], { encoding: "utf8", timeout: 10000 });
     if (result.error || result.status !== 0) throw new RepairError("PROCESS_CHECK_UNAVAILABLE", 3);
     rows = result.stdout.split("\n").map((line) => {
       const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/u.exec(line);
@@ -105,6 +106,9 @@ export async function repairInstallation(options, {
   let lock;
   let lockPath;
   let ownedLock = false;
+  let releaseGuard;
+  let probeId;
+  let guardLost = false;
   let target;
   try {
     const context = await launchContext(options, env);
@@ -119,9 +123,26 @@ export async function repairInstallation(options, {
       action: "检查活动 MCP 进程；独占锁定此缓存；备份此目录；按原包名重装一次；验证 initialize 和 tools/list。未修改文件。",
     };
     lockPath = path.join(target.cache, ".shiliu-mcp-repair.lock");
+    // Serialize stale-file reclamation too; a check-then-unlink without a guard
+    // could delete another repair's newly created lock. This dependency is loaded
+    // only for explicit repair, so stdio preflight remains dependency-free.
+    const { default: lockfile } = await import("proper-lockfile");
+    try {
+      releaseGuard = await lockfile.lock(target.cache, {
+        lockfilePath: path.join(target.cache, ".shiliu-mcp-repair.guard"),
+        stale: 10000, update: 2000, retries: 0,
+        onCompromised: () => { guardLost = true; },
+      });
+    } catch (error) {
+      if (error.code === "ELOCKED") throw new RepairError("REPAIR_ALREADY_RUNNING", 3);
+      throw error;
+    }
+    const previous = await inspectRepairLock(lockPath);
+    if (previous.state === "stale") await unlink(lockPath);
+    else if (previous.state !== "absent") throw new RepairError("REPAIR_ALREADY_RUNNING", 3);
     try { lock = await open(lockPath, "wx", 0o600); ownedLock = true; }
     catch (error) { if (error.code === "EEXIST") throw new RepairError("REPAIR_ALREADY_RUNNING", 3); throw error; }
-    const probeId = randomUUID();
+    probeId = randomUUID();
     await lock.writeFile(JSON.stringify({ pid: process.pid, entry: target.entry, probe_id: probeId }));
     context.env.SHILIU_REPAIR_PROBE_ID = probeId;
     progress("process_check");
@@ -133,6 +154,7 @@ export async function repairInstallation(options, {
     // Revalidate immediately before moving; never delete or move the entire cache.
     await validateCacheEntry(target.cache, target.entry);
     await activeCheck(target.entry);
+    if (guardLost) throw new RepairError("REPAIR_LOCK_LOST", 3);
     progress("backup");
     await rename(target.entry, backup);
     progress("reinstall");
@@ -169,11 +191,17 @@ export async function repairInstallation(options, {
       process_exit_code: error.exitCode || (error.diagnosticCode === "CONFIG_INVALID" ? 2 : 3),
       ...(backup ? { backup_path: backup } : {}),
       ...(target ? { cache_entry: target.entry } : {}),
-      action: "先停用客户端中石榴 MCP 的自动启动，再核对缓存目录与实际 Node/npm。仅处理独占石榴包的 _npx 安装目录；不删除凭据、其他包或整个缓存。",
+      action: error.reason === "REPAIR_ALREADY_RUNNING"
+        ? "此缓存正在修复或锁持有者无法确认。等待该修复结束；异常中断时先核对锁文件中的 PID，不要重装 CLI 或删除整个缓存。"
+        : "先停用客户端中石榴 MCP 的自动启动，再核对缓存目录与实际 Node/npm。仅处理独占石榴包的 _npx 安装目录；不删除凭据、其他包或整个缓存。",
     };
   } finally {
     await lock?.close().catch(() => {});
-    if (ownedLock) await unlink(lockPath).catch(() => {});
+    if (ownedLock) {
+      const current = await inspectRepairLock(lockPath).catch(() => ({}));
+      if (current.owner?.probe_id === probeId) await unlink(lockPath).catch(() => {});
+    }
+    await releaseGuard?.().catch(() => {});
   }
 }
 

@@ -9,6 +9,8 @@ import { launchContext } from "../src/launch-context.js";
 import { getDoctorReport } from "../src/doctor.js";
 import { verifyStdioLaunch } from "../src/stdio-probe.js";
 import { parseCliArguments } from "../src/arguments.js";
+import { checkRepairLock } from "../src/runtime-preflight.js";
+import { inspectRepairLock } from "../src/repair-lock-state.js";
 
 async function sandbox(run) {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), "shiliu-repair-")));
@@ -182,4 +184,100 @@ test("specified client launch has no fallback that hides its failure, and creden
   await assert.rejects(launchContext({ launchFile }), /配置或参数无效/u);
   assert.throws(() => parseCliArguments(["repair"]), /cache-entry/u);
   assert.throws(() => parseCliArguments(["status", "--node-path", process.execPath]), /doctor 或 repair/u);
+}));
+
+test("preflight ignores only confirmed dead owners and never deletes lock files", async () => sandbox(async (root) => {
+  const f = await cacheFixture(root);
+  const lock = path.join(f.cache, ".shiliu-mcp-repair.lock");
+  const dead = () => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); };
+  await checkRepairLock({}, { root: f.packageRoot, kill: dead });
+  const content = JSON.stringify({ pid: 12345, probe_id: "owner" });
+  await writeFile(lock, content);
+  await checkRepairLock({}, { root: f.packageRoot, kill: dead });
+  assert.equal(await readFile(lock, "utf8"), content);
+  await assert.rejects(checkRepairLock({}, { root: f.packageRoot, kill: () => {} }),
+    (error) => error.runtimeReason === "REPAIR_IN_PROGRESS");
+  await assert.rejects(checkRepairLock({}, { root: f.packageRoot, kill: () => {
+    throw Object.assign(new Error("denied"), { code: "EPERM" });
+  } }), (error) => error.runtimeReason === "REPAIR_IN_PROGRESS");
+  await checkRepairLock({ SHILIU_REPAIR_PROBE_ID: "owner" }, { root: f.packageRoot, kill: () => {} });
+  for (const text of ["truncated", "{}", '{"pid":-1}', '{"pid":"123"}']) {
+    await writeFile(lock, text);
+    await assert.rejects(checkRepairLock({}, { root: f.packageRoot, kill: dead }),
+      (error) => error.runtimeReason === "REPAIR_IN_PROGRESS");
+    assert.equal(await readFile(lock, "utf8"), text);
+  }
+}));
+
+test("explicit repair reclaims a real exited owner's lock under a separate guard", async () => sandbox(async (root) => {
+  const f = await cacheFixture(root);
+  const exited = spawn(process.execPath, ["-e", "process.exit(0)"], { stdio: "ignore", windowsHide: true });
+  const deadPid = exited.pid;
+  await new Promise((resolve) => exited.once("close", resolve));
+  const lock = path.join(f.cache, ".shiliu-mcp-repair.lock");
+  await writeFile(lock, JSON.stringify({ pid: deadPid, probe_id: "abandoned" }));
+  assert.equal((await inspectRepairLock(lock)).state, "stale");
+  await checkRepairLock({}, { root: f.packageRoot });
+  const result = await repairInstallation({ cacheEntry: f.entry, npmCache: f.cache, npmCli: path.resolve("package.json") }, {
+    activeCheck: () => {},
+    npm: () => {
+      const child = spawnSync(process.execPath, [path.resolve("test-support/rebuild-cache.js"), f.entry], { encoding: "utf8" });
+      assert.equal(child.status, 0, child.stderr);
+    },
+    verify: async () => ({ ok: true, tool_count: 3 }),
+  });
+  assert.equal(result.status, "repaired");
+  assert.equal(await lstat(lock).catch(() => null), null);
+  assert.equal(await lstat(path.join(f.cache, ".shiliu-mcp-repair.guard")).catch(() => null), null);
+}));
+
+test("competing repairs preserve the live owner's lock and do not move the entry", async () => sandbox(async (root) => {
+  const f = await cacheFixture(root);
+  let entered, finish;
+  const ready = new Promise((resolve) => { entered = resolve; });
+  const hold = new Promise((resolve) => { finish = resolve; });
+  const options = { cacheEntry: f.entry, npmCache: f.cache, npmCli: path.resolve("package.json") };
+  const first = repairInstallation(options, { activeCheck: async () => {
+    entered(); await hold;
+    throw Object.assign(new Error("fixture stopped"), { reason: "MCP_STILL_RUNNING" });
+  } });
+  await ready;
+  const lock = path.join(f.cache, ".shiliu-mcp-repair.lock");
+  const before = await readFile(lock, "utf8");
+  try {
+    const second = await repairInstallation(options);
+    assert.equal(second.error_code, "REPAIR_ALREADY_RUNNING");
+    assert.equal(await readFile(lock, "utf8"), before);
+    assert.equal(await readFile(path.join(f.packageRoot, "evidence.txt"), "utf8"), "original installation");
+  } finally { finish(); await first; }
+}));
+
+test("PowerShell process inventory requests UTF-8 before emitting Chinese command paths", () => {
+  assert.throws(() => checkActiveLaunch("C:\\用户\\cache\\_npx\\abcdef0123456789", {
+    platform: "win32",
+    spawnImpl: (_command, args, options) => {
+      assert.match(args.at(-1), /^\[Console\]::OutputEncoding=\[Text.Encoding\]::UTF8;/u);
+      assert.equal(options.encoding, "utf8");
+      assert.equal(options.windowsHide, true);
+      return { status: 0, stdout: JSON.stringify([{
+        ProcessId: 424242, ParentProcessId: 1,
+        CommandLine: 'node "C:\\用户\\cache\\_npx\\abcdef0123456789\\node_modules\\@bigbrain-work\\mcp-connect\\bin\\shiliu.js" mcp',
+      }]) };
+    },
+  }), /MCP_STILL_RUNNING/u);
+});
+
+test("Windows PowerShell detects a real active MCP fixture under a Chinese path", { skip: process.platform !== "win32" }, async () => sandbox(async (root) => {
+  const f = await cacheFixture(path.join(root, "中文用户"));
+  const bin = path.join(f.packageRoot, "bin", "shiliu.js");
+  await mkdir(path.dirname(bin));
+  await writeFile(bin, "setInterval(()=>{},1000);");
+  const child = spawn(process.execPath, [bin, "mcp"], { stdio: "ignore", windowsHide: true });
+  try {
+    await new Promise((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
+    assert.throws(() => checkActiveLaunch(f.entry), /MCP_STILL_RUNNING/u);
+  } finally {
+    const closed = new Promise((resolve) => child.once("close", resolve));
+    child.kill(); await closed;
+  }
 }));
