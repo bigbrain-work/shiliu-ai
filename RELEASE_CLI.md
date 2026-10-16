@@ -20,8 +20,8 @@
 
 1. 读取全局及所有涉及目录的 `AGENTS.md`；保留无关改动、未跟踪文件与其他任务。
 2. 确认真实 Git 根目录，再查看工作树、远程 main、已发布 npm 版本及 GitHub release。
-3. 在独立 worktree 中基于最新 `origin/main` 整理本次改动。不要直接把脏工作目录整体打包，也不要把其他任务的 Skill 改动带入发布。
-4. npm 版本不可覆盖，选择尚未发布的新版本。同步 `package.json`、`package-lock.json` 根包版本、两种安装脚本的最低版本、安装指南、版本相关测试及发布说明。
+3. 可以在独立 worktree 和独立分支中基于最新 `origin/main` 整理本次改动；创建或复用前说明原代码目录、实际开发目录和分支。不要直接把原目录的全部未提交改动整体带入或打包，也不要把其他任务的 Skill 改动带入发布。合入前同步最新主分支，处理冲突并验证相关功能；无文本冲突不等于业务兼容。
+4. npm 版本不可覆盖，选择尚未发布的新版本。同步 `package.json`、`package-lock.json` 根包版本、版本相关测试及发布说明。仅当指南依赖新增行为时提高安装脚本/指南的最低版本；1.3.13至1.3.17不改变指南正常流程，最低版本仍1.3.12。
 5. 如果只更新 CLI 和三个安装文件，保留线上 Skill 包和业务前端资源；不执行整站覆盖。
 
 PowerShell 中每条命令独立执行，并检查退出码。以下命令在 CLI 发布候选目录运行：
@@ -47,6 +47,13 @@ git diff --check
 ```
 
 把 `RELEASE_ID` 替换为本次独立发布目录。若需要更新 Skill，还须验证归档及逐文件 SHA256、无 Git 安装和客户端实际发现；不得因为 CLI 发布就自动更新已安装 Skills。
+
+### 每次提交结果的汇报
+
+- 分别核查原代码目录（CLI 为 `D:\program\shiliu-ai`）和本次独立开发目录，写明绝对路径，并列出已跟踪但未提交的文件数、新增未跟踪的文件数和合计。涉及后端时，同样报告 `D:\program\enegry_points_service` 的数量。
+- 未跟踪目录展开到文件计数；同一文件暂存与未暂存的变化不重复计数，忽略文件不计入。独立目录零改动不代表原目录零改动，不得只报告“工作目录干净”。
+- 单独说明提交编号及本地提交、推送、合入、发布各阶段的实际状态。原目录已有修改可能已通过其他分支提交；未核对前，不把它们一概称为从未提交的功能。
+- 合入后检查原目录能否安全同步；保留其他任务的修改，不擅自覆盖、删除或混合提交。不能安全同步时，明确报告遗留数量和原因。
 
 ## 2. 发布 npm
 
@@ -108,4 +115,57 @@ npm 已发布版本不能覆盖。优先修复并发布递增版本；紧急情�
 
 ## 本次发布记录
 
-2026-10-07：准备发布 `1.3.10`，内容为登录前 stdio 握手、登录/状态基础工具、错误分类/退出码和安全诊断日志。实际完成状态以本节后续记录及公开 npm 校验为准，不能把“候选准备好”写成“已发布”。
+2026-10-07：`1.3.10` 候选通过 Windows 全套 99 项 CLI 测试、PowerShell 5.1 安装器检查、13 项归档完整性检查，以及 GitHub 的 validate、cli-node18、windows-validate。PR #19 已合并，源码提交为 `a6984bedd2df5448b290b479a94843a838ce3ef4`，GitHub Release 为 `v1.3.10`。
+
+npm 自动发布运行 `37613484501` 返回 E404 / 发布权限错误；本机登录最初返回 E401。账号持有人完成 npm 官方登录及发布认证后，使用经验证的 tarball 手动发布成功。公开 latest 为 `1.3.10`，公开 tarball 的 integrity 和 SHA256 与测试候选一致。GitHub 自动发布权限仍需以后在 npm 包设置核对，不能把本次手动发布成功当作自动发布已修复。
+
+官网 `install.txt`、`install.ps1`、`install.sh` 已切换，备份位于 `/usr/share/nginx/allproduct/cli-backup-1.3.10-20261007-191314`。大小写公开入口共 6 次下载均为 HTTP 200，正文与候选逐字节一致。其他前端资源、Skill 分发文件和 Nginx 配置未替换。
+
+从公网安装器和 npm latest 做了独立全新安装，输出 `CLI installed. Version: 1.3.10`。公开包匿名 stdio 握手成功，返回 3 个基础工具、0 个业务工具；使用本机现有设备授权后发现 27 个业务工具，并通过实际 MCP 通道调用 `get_account_balance`，返回 `charged=false`、`consumed_credits=0`。客户真实 WorkBuddy 及新扫码仍需客户侧验证；客户更新后需要重连旧 MCP 进程。
+
+发布证据目录：`D:\program\.release\shiliu-cli-1.3.10-20261007-191314`。公开及本地 tarball SHA256 均为 `ae4154ff9ba085996d48d607d588e7da836b335c2dd628a10301374ac2eed7ca`；证据包括 `registry-verification.json`、`public-verification.json`、`bridge-verification.json` 和 `release-state.json`。
+
+
+### 2026-10-08：CLI 1.3.11 发布完成
+
+本次发布安装预热与真实 stdio 握手校验、独立运行时诊断入口和指定 npx 缓存备份修复。没有发布 Java 后端、Skill 或第四项稳定启动器。独立候选排除了其他任务的直接 Skill 安装改动，保留原工作目录的未发布工作。
+
+PR #20 经 validate、cli-node18、windows-validate 全部通过后合并，源码提交为 `74cd29dbb18ac709435d90aee1dde1a19461d055`，GitHub Release 为 `v1.3.11`。候选 108 项测试、Windows 安装器行为检查和 13 项分发完整性检查通过；测试候选与合并提交的文件树一致。
+
+自动发布运行 `37782570700` 仍返回 E404 / npm 发布权限错误。本机账号持有人完成官方登录和本次发布的独立 Passkey 验证后，使用验证过的 tarball 发布成功。公开 npm latest 为 `1.3.11`；公开包 integrity 与候选一致，SHA256 为 `06c1c4565f94f97c36bd18e04434ac8ebb41adbf63427829d05c6fb42c8c324d`。本次手动成功不代表 Trusted Publishing 配置已修复。
+
+官网三个安装文件已按当次摘要并发核对、备份、逐文件原子替换；备份为 `/usr/share/nginx/allproduct/cli-backup-1.3.11-20261008-205800`。大小写两个入口共六次下载均 HTTP 200，正文与候选逐字节一致。公开 PowerShell 安装器在独立前缀输出 `CLI installed. Version: 1.3.11`，标准 npx initialize + tools/list 通过。没有修改 Nginx 配置或覆盖其他静态资源。
+
+公开包无凭据时 initialize 成功，返回三个登录/状态工具。使用本机现有设备授权后，`shiliu status`、`shiliu tools` 和 stdio 实际握手成功，发现 27 个业务工具；未调用付费工具。客户更新后仍须重连，尚未在客户真实 WorkBuddy 上验收。
+
+真实 npm 缓存修复验收：在本次证据目录的独立 npm 缓存中安装公开 1.3.11，移走 Ajv 的 `dist/2020.js` 模拟缺文件。轻量 `--version` 仍成功，doctor 实际握手返回退出码 3、`child_runtime.reason=DEPENDENCY_INCOMPLETE`。repair dry-run 通过，实际 repair 保留损坏缓存的备份、按原包名重建缓存，并完成新缓存和指定启动方式的两次握手；2019.js/2020.js 均存在，返回 `repaired`、`reload_required=true`，工具共 30 个（3 个基础工具加 27 个业务工具）。没有处理用户原有的 npx 缓存目录。
+
+后续诊断时读取 `stdio_launch.child_runtime.reason` 和实际 node/npm/cache，不用 `--version` 替代依赖完整性检查。客户内置运行时需要指定 `--node-path`、`--npm-cli`、`--npm-cache`，可结合只含无凭据 Shiliu stdio 命令的 `--launch-file`；不能把终端验证通过当作客户端原生加载成功。
+
+Web 发布认证注意：npm 的发布认证流程要求 stdin/stdout 保持 TTY；不要先把 npm publish 的全部输出重定向到文件，否则它会直接返回 EOTP 而不等待网页认证。在 Codex 中使用带 `tty: true` 的官方 npm 命令；可加 `--browser=false`，然后将 npm 提供的官方 URL 在账号持有人的浏览器打开，让 npm 自行轮询。不要读取、传递或写入认证返回的 token/OTP。登录认证与发布认证可能各要求一次 Passkey。发布后用公开 registry 校验作为最终证据，不以浏览器成功提示代替。
+
+发布证据目录：`D:\program\.release\shiliu-cli-1.3.11-20261008-205800`。结果见 `release-state.json`、`registry-verification.json`、`public-verification.json`、`bridge-verification.json`、`repair-verification.json` 和 `public-installer-smoke.log`。
+
+
+### 2026-10-08：公开 Agent 通用连接排查指南
+
+PR #21 已合并，源码提交为 `28ccd1e60fd3863eb47647f9cc395ae3097fdbdc`。仅更新 `install.txt`，顶部和安装验证步骤引导到第 7 节；按 Agent 能力和实际启动上下文排查，不针对特定客户端。连接未建立或 Skill 未安装时也可从公开地址读取，涵盖错误分类、精确缓存修复、重连及原生工具验证。
+
+13 项分发完整性检查与 validate、cli-node18、windows-validate 均通过（运行 `37786574351`）。当次线上摘要核对后备份并原子替换指南；备份为 `/usr/share/nginx/allproduct/guide-backup-shiliu-agent-troubleshooting-20261008-214500`。两个公开入口均 HTTP 200，与候选逐字节一致，SHA256 为 `68c4afa0a34f6922a8627b8267c1e7cdf5c88fed89b4abdcb3415e431aea0275`；安装脚本、npm 包、Skill 和 Nginx 配置未改动，CLI 仍为 1.3.11。
+
+证据：`D:\program\.release\shiliu-agent-troubleshooting-20261008-214500\public-verification.json`。
+
+
+### 2026-10-08：安装指南接口用途说明
+
+PR #22 已合并，源码提交为 `0045913bed78986cc1aa3711d98c66c3f40a6e6f`。公开 `install.txt` 顶部新增 Interface overview，集中说明对象、用途、公开只读文本性质、四类适用场景及各自步骤入口，供 Agent 在读取后选择首次接入、CLI 更新、连接失败排查或工具加载验证。
+
+13 项分发完整性检查及三项 CI 全部通过（运行 `37790845268`）。指南经当次 SHA256 并发检查、备份、原子替换后发布；两个公开入口 HTTP 200，正文与候选逐字节一致，SHA256 为 `52723fce83dbd2a122f9fb30cb240db872d460dc8a797d1bf0bedeeae329e71a`。CLI 仍为 1.3.11，两个安装脚本保持原摘要。本次只修改指南。
+
+备份：`/usr/share/nginx/allproduct/guide-backup-shiliu-guide-purpose-20261008-221243`。证据：`D:\program\.release\shiliu-guide-purpose-20261008-221243\public-verification.json`。
+
+### 2026-10-16：P1 与后续版本
+
+1.3.12 的修复、依赖评估、发布结果及旧用户升级通知见 `docs/cli-1.3.12.md` 和发布计划；1.3.13 的参数错误契约见 `docs/cli-1.3.13.md`。1.3.14 的 worker 截止时间见 `docs/cli-1.3.14.md`。各版本独立发布，不能把候选说明当成公开包验收。2026-10-16 已在 Claude Code 2.1.201 通过原生 Skill 发现、31 个 MCP 工具及免费余额调用验收；未登记测试项目的普通任务静默跳过 refresh，未写文件。Codex CLI 0.116.0 因当前配置模型不受账号支持而未完成原生验收。
+
+1.3.15 的认证错误分类、1.3.16 的 repair 锁/UTF-8 以及1.3.17的连接生命周期也已分别发布，公开包和真实客户端证据见各版本说明。最低运行时严格安装、audit及smoke按每个公开版本单独验收，不以另一版本的结果代替。
