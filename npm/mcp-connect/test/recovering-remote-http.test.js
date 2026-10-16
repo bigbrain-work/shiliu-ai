@@ -5,7 +5,7 @@ import { McpError } from "@modelcontextprotocol/sdk/types.js";
 import { connectRecoveringRemote } from "../src/recovering-remote.js";
 import { connectRemote } from "../src/remote-client.js";
 
-async function fixture(t, { rpcError, isError = false, rejectFirstHttp = false }) {
+async function fixture(t, { rpcError, isError = false, rejectFirstHttp = false, rejectAfterDispatch = false }) {
   const counts = { initializes: 0, requests: 0, executions: 0, resolves: 0 };
   const server = createServer(async (request, response) => {
     if (request.method !== "POST") {
@@ -37,6 +37,10 @@ async function fixture(t, { rpcError, isError = false, rejectFirstHttp = false }
         return;
       }
       counts.executions += 1;
+      if (rejectAfterDispatch) {
+        response.writeHead(401, { "Content-Type": "text/plain" }).end("Unauthorized after execution");
+        return;
+      }
       if (rpcError) {
         response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({
           jsonrpc: "2.0", id: message.id, error: rpcError,
@@ -85,9 +89,14 @@ test("actual SDK isError result is returned without reconnect or replay", async 
   assert.deepEqual(counts, { initializes: 1, requests: 1, executions: 1, resolves: 1 });
 });
 
-test("actual HTTP 401 before dispatch retains the existing one-reconnect recovery", async (t) => {
+test("actual HTTP 401 never automatically replays a tool call", async (t) => {
   const { recovering, counts } = await fixture(t, { rejectFirstHttp: true });
-  const result = await recovering.invoke("callTool", { name: "synthetic_write", arguments: {} });
-  assert.equal(result.isError, false);
-  assert.deepEqual(counts, { initializes: 2, requests: 2, executions: 1, resolves: 2 });
+  await assert.rejects(recovering.invoke("callTool", { name: "synthetic_write", arguments: {} }), { code: 401 });
+  assert.deepEqual(counts, { initializes: 1, requests: 1, executions: 0, resolves: 1 });
+});
+
+test("HTTP401 after a side effect is never executed a second time", async (t) => {
+  const { recovering, counts } = await fixture(t, { rejectAfterDispatch: true });
+  await assert.rejects(recovering.invoke("callTool", { name: "synthetic_write", arguments: {} }), { code: 401 });
+  assert.deepEqual(counts, { initializes: 1, requests: 1, executions: 1, resolves: 1 });
 });

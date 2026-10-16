@@ -2,8 +2,10 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { PACKAGE_VERSION } from "./constants.js";
+import { closeBriefly, createRequestContext } from "./request-context.js";
+import { readAllTools } from "./tool-catalog.js";
 
-export async function connectRemote({ token, apiKey, url }) {
+export async function connectRemote({ token, apiKey, url, signal }) {
   const authorizationToken = token || apiKey;
   if (!authorizationToken) throw new Error("Missing authorization token");
   const client = new Client({
@@ -18,9 +20,9 @@ export async function connectRemote({ token, apiKey, url }) {
     },
   });
   try {
-    await client.connect(transport, { timeout: 15000 });
+    await client.connect(transport, { timeout: 15000, signal });
   } catch (error) {
-    await client.close().catch(() => {});
+    await closeBriefly(() => client.close());
     throw error;
   }
   return client;
@@ -33,10 +35,14 @@ export async function readToolCatalog({
   connect = connectRemote,
 }) {
   const client = await connect({ token: token || apiKey, url });
+  const context = createRequestContext();
   try {
-    const result = await client.listTools();
-    return result.tools || [];
+    const tools = await readAllTools((_method, params) => context.run(() => client.listTools(params, context.options())),
+      { deadline: context.deadline });
+    client.cacheToolMetadata?.(tools);
+    return tools;
   } finally {
-    await client.close();
+    context.dispose();
+    await closeBriefly(() => client.close());
   }
 }

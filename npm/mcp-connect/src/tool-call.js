@@ -19,6 +19,8 @@ import { resolveAuthorization } from "./authorization.js";
 import { AUTH_URL } from "./constants.js";
 import { connectRemote } from "./remote-client.js";
 import { connectRecoveringRemote } from "./recovering-remote.js";
+import { closeBriefly, createRequestContext, cancelledRequest } from "./request-context.js";
+import { readAllTools } from "./tool-catalog.js";
 
 const MAX_ARGUMENT_BYTES = 4 * 1024 * 1024;
 
@@ -213,17 +215,26 @@ export async function runToolCall({
   connect = connectRemote,
   resolveAuth = resolveAuthorization,
   connectRecovering = connectRecoveringRemote,
+  signal, requestOptions = {}, processImpl = process,
 } = {}) {
   const preparedOutputPath = await preflightOutputPath(outputPath, { force });
-  const remote = await connectRecovering({
-    url,
-    connectRemote: connect,
-    resolveAuthorization: async () =>
-      resolveAuth({ home, platform, env, authUrl, tokenStore }),
-  });
+  const context = createRequestContext({ ...requestOptions, signal });
+  processImpl.once("SIGINT", context.abort);
+  let remote;
   try {
-    const catalog = await remote.invoke("listTools");
-    const tools = catalog.tools || [];
+    remote = await context.run(() => connectRecovering({
+      url,
+      connectRemote: connect,
+      resolveAuthorization: async () =>
+        resolveAuth({ home, platform, env, authUrl, tokenStore }),
+      requestOptions: { ...requestOptions, signal: context.signal, deadline: context.deadline },
+    }).then(async (connection) => {
+      if (context.signal.aborted) { await connection.close(); throw cancelledRequest(); }
+      return connection;
+    }));
+    const options = { ...requestOptions, signal: context.signal, deadline: context.deadline };
+    const tools = await readAllTools(remote.invoke.bind(remote), options, remote.revision);
+    remote.cacheToolMetadata?.(tools);
     const tool = tools.find((candidate) => candidate.name === toolName);
     if (!tool) {
       throw new Error(
@@ -243,7 +254,7 @@ export async function runToolCall({
     const result = await remote.invoke("callTool", {
       name: toolName,
       arguments: argumentsValue,
-    });
+    }, options);
     if (!preparedOutputPath) return result;
     const file = await writeResultFile(preparedOutputPath, result, { force });
     const metadata = extractResultMetadata(result);
@@ -258,6 +269,8 @@ export async function runToolCall({
       is_error: Boolean(result.isError),
     };
   } finally {
-    await remote.close();
+    processImpl.removeListener("SIGINT", context.abort);
+    context.dispose();
+    if (remote) await closeBriefly(() => remote.close());
   }
 }
