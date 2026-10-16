@@ -37,7 +37,7 @@ export async function archiveInstaller(root, content = "fixture") {
               }),
             )
           : bytes;
-        return { ok: true, arrayBuffer: async () => data };
+        return new Response(data, { status: 200 });
       },
     });
   };

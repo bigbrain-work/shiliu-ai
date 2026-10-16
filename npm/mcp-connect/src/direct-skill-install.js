@@ -84,7 +84,7 @@ async function fetchBytes(url, { fetchImpl, label }) {
       bytes = Buffer.concat(chunks, length);
     } finally { reader.releaseLock(); }
   } else {
-    bytes = Buffer.from(await response.arrayBuffer());
+    throw new Error(`${label}没有可读取的数据流`);
   }
   if (bytes.length === 0 || bytes.length > MAX_SKILL_ARCHIVE_BYTES) {
     throw new Error(`${label}大小异常：${bytes.length} bytes`);

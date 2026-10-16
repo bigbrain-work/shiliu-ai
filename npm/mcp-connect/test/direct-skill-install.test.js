@@ -38,7 +38,7 @@ test("unsafe archive entry rejects normally and releases staging and Skill lock"
       }),
     );
     const script = `import{installShiliuSkill}from'./src/skill-refresh.js';import{installSkillArchive}from'./src/direct-skill-install.js';
-      try{await installShiliuSkill({home:${JSON.stringify(root)},cwd:${JSON.stringify(root)},targetDirectory:${JSON.stringify(path.join(root, "skills"))},directInstall:o=>installSkillArchive({...o,fetchImpl:async url=>({ok:true,arrayBuffer:async()=>Buffer.from(String(url).endsWith('index.json')?${JSON.stringify(index.toString("base64"))}:${JSON.stringify(archive.toString("base64"))},'base64')})})});}catch(e){console.log('caught unsafe archive');}finally{console.log('finally completed');}`;
+      try{await installShiliuSkill({home:${JSON.stringify(root)},cwd:${JSON.stringify(root)},targetDirectory:${JSON.stringify(path.join(root, "skills"))},directInstall:o=>installSkillArchive({...o,fetchImpl:async url=>new Response(Buffer.from(String(url).endsWith('index.json')?${JSON.stringify(index.toString("base64"))}:${JSON.stringify(archive.toString("base64"))},'base64'))})});}catch(e){console.log('caught unsafe archive');}finally{console.log('finally completed');}`;
     const child = spawnSync(
       process.execPath,
       ["--input-type=module", "-e", script],
@@ -58,12 +58,7 @@ test("unsafe archive entry rejects normally and releases staging and Skill lock"
 
 function byteResponse(bytes, status = 200) {
   const value = Buffer.from(bytes);
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    arrayBuffer: async () =>
-      value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength),
-  };
+  return new Response(value, { status });
 }
 
 async function fixture(home) {
