@@ -24,6 +24,7 @@ test("defaults to smart install", () => {
     argumentsStdin: false,
     outputPath: undefined,
     skillScope: "project",
+    skillTargetDirectory: undefined,
     session: undefined,
     json: false,
     help: false,
@@ -76,6 +77,16 @@ test("supports the formal command surface", () => {
   ]);
   assert.equal(skillInstall.agent, "claude-code");
   assert.equal(skillInstall.skillScope, "user");
+  const directSkillInstall = parseCliArguments([
+    "skill",
+    "install",
+    "--target-dir",
+    ".workbuddy/skills",
+    "--scope",
+    "user",
+  ]);
+  assert.equal(directSkillInstall.agent, undefined);
+  assert.equal(directSkillInstall.skillTargetDirectory, ".workbuddy/skills");
   const call = parseCliArguments([
     "call",
     "web_search",
@@ -100,7 +111,7 @@ test("rejects command-specific options outside their valid context", () => {
   );
   assert.throws(
     () => parseCliArguments(["skill", "install"]),
-    /需要 --agent/u,
+    /需要 --agent.*--target-dir/u,
   );
   assert.throws(
     () => parseCliArguments(["skill", "refresh", "--agent", "codex"]),
@@ -109,6 +120,22 @@ test("rejects command-specific options outside their valid context", () => {
   assert.throws(
     () => parseCliArguments(["install", "--scope", "user"]),
     /--scope 仅适用于/u,
+  );
+  assert.throws(
+    () => parseCliArguments(["install", "--target-dir", "skills"]),
+    /--target-dir 仅适用于/u,
+  );
+  assert.throws(
+    () =>
+      parseCliArguments([
+        "skill",
+        "install",
+        "--agent",
+        "workbuddy",
+        "--target-dir",
+        "skills",
+      ]),
+    /不能同时使用/u,
   );
 });
 

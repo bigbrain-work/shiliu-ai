@@ -130,7 +130,7 @@ if ($install.ExitCode -ne 0) {
 
 $shiliuCommand = Resolve-NativeCommand @('shiliu.cmd', 'shiliu') 'The shiliu command is not on PATH. Open a new terminal and retry.'
 $shiliuVersion = Invoke-NativeVersion $shiliuCommand @('--version') 'shiliu --version returned a non-zero exit code. CLI installation could not be verified.'
-Assert-MinimumVersion $shiliuVersion '1.3.11' 'Shiliu AI CLI'
+Assert-MinimumVersion $shiliuVersion '1.3.12' 'Shiliu AI CLI'
 
 Write-Host 'Verifying the actual npx MCP launch (initialize + tools/list)...'
 & $shiliuCommand doctor --transport stdio --standard-only --prepare --json

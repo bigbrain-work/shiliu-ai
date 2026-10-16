@@ -5,26 +5,32 @@ import { logout } from "../src/cli.js";
 
 test("revokes remotely before clearing local credentials", async () => {
   const events = [];
-  await logout({
-    home: "C:\\test-home",
-    dryRun: false,
-    authUrl: "https://api.bigbrain.work/shiliu/auth/device",
-    tokenStore: {
-      load: async () => ({ refreshToken: "refresh-secret" }),
-      clear: async () => events.push("clear-token"),
-    },
-    pendingLoginStore: {
-      load: async () => null,
-      clear: async () => events.push("clear-pending"),
-    },
-    clientFactory: () => ({
-      revoke: async (token) => {
-        assert.equal(token, "refresh-secret");
-        events.push("revoke");
+  const originalLog = console.log;
+  console.log = () => {};
+  try {
+    await logout({
+      home: "C:\\test-home",
+      dryRun: false,
+      authUrl: "https://api.bigbrain.work/shiliu/auth/device",
+      tokenStore: {
+        load: async () => ({ refreshToken: "refresh-secret" }),
+        clear: async () => events.push("clear-token"),
       },
-    }),
-    clearLegacyApiKey: async () => events.push("clear-legacy"),
-  });
+      pendingLoginStore: {
+        load: async () => null,
+        clear: async () => events.push("clear-pending"),
+      },
+      clientFactory: () => ({
+        revoke: async (token) => {
+          assert.equal(token, "refresh-secret");
+          events.push("revoke");
+        },
+      }),
+      clearLegacyApiKey: async () => events.push("clear-legacy"),
+    });
+  } finally {
+    console.log = originalLog;
+  }
 
   assert.deepEqual(events, [
     "revoke",

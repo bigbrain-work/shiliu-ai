@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer as createHttpServer } from "node:http";
@@ -104,10 +105,7 @@ test(
     const url = `http://127.0.0.1:${address.port}/mcp`;
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [
-        path.resolve("test-support/proxy-entry.js"),
-        url,
-      ],
+      args: [path.resolve("test-support/proxy-entry.js"), url],
       env: { ...process.env, [API_KEY_ENV]: "integration-secret" },
       stderr: "pipe",
     });
@@ -120,7 +118,7 @@ test(
 
     try {
       try {
-        await client.connect(transport);
+        await client.connect(transport, { timeout: 5000 });
       } catch (error) {
         throw new Error(
           `${error.message}${childStderr ? `; child stderr: ${childStderr.trim()}` : ""}`,
@@ -166,12 +164,18 @@ test(
       "ascii",
     );
     const definition = stdioServerDefinition("win32");
+    // Windows environment keys are case-insensitive. Duplicate Path/PATH keys
+    // can select the real npx instead of the fixture on older Node versions.
+    const childEnvironment = { ...process.env };
+    for (const key of Object.keys(childEnvironment)) {
+      if (key.toUpperCase() === "PATH") delete childEnvironment[key];
+    }
+    childEnvironment.PATH = `${sandbox};${process.env.PATH || ""}`;
     const transport = new StdioClientTransport({
       command: definition.command,
       args: definition.args,
       env: {
-        ...process.env,
-        PATH: `${sandbox};${process.env.PATH || ""}`,
+        ...childEnvironment,
         [API_KEY_ENV]: "integration-secret",
         SHILIU_TEST_NODE: process.execPath,
         SHILIU_TEST_PROXY_ENTRY: path.resolve("test-support/proxy-entry.js"),
@@ -188,7 +192,7 @@ test(
 
     try {
       try {
-        await client.connect(transport);
+        await client.connect(transport, { timeout: 5000 });
       } catch (error) {
         throw new Error(
           `${error.message}${childStderr ? `; child stderr: ${childStderr.trim()}` : ""}`,
@@ -196,13 +200,24 @@ test(
         );
       }
       const tools = await client.listTools();
-      assert.deepEqual(tools.tools.map((tool) => tool.name), [...LOGIN_TOOLS.map((tool) => tool.name), "echo"]);
+      assert.deepEqual(
+        tools.tools.map((tool) => tool.name),
+        [...LOGIN_TOOLS.map((tool) => tool.name), "echo"],
+      );
       const result = await client.callTool({
         name: "echo",
         arguments: { value: "windows-cmd" },
       });
       assert.equal(result.content[0].text, "echo:windows-cmd");
     } finally {
+      // This fixture deliberately holds SSE open. Kill only its known cmd/node tree
+      // before the SDK loses the parent PID; otherwise Node 18 leaves a child alive.
+      if (transport.pid)
+        spawnSync("taskkill", ["/pid", String(transport.pid), "/t", "/f"], {
+          windowsHide: true,
+          stdio: "ignore",
+          timeout: 5000,
+        });
       await client.close();
       await remote.close();
       await rm(sandbox, { recursive: true, force: true });

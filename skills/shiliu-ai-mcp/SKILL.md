@@ -9,7 +9,7 @@ Use the connected Shiliu AI MCP service as the source of truth for available too
 
 ## Start every task
 
-1. Before the first Shiliu AI MCP tool call in each user task, run `shiliu skill refresh` exactly once. The CLI returns immediately when this project was checked within the previous 24 hours and updates only `shiliu-ai-mcp` when the check is due. Do not repeat it before every tool call in the same task.
+1. Before the first Shiliu AI MCP tool call in each user task, run `shiliu skill refresh` exactly once. The CLI returns immediately when this project was checked within the previous 24 hours and updates only existing registered `shiliu-ai-mcp` paths when due. A normal `skipped / target_not_registered` result exits 0: silently continue; never install, force-refresh or repeatedly remind the user. Do not repeat it before every tool call in the same task.
 2. Confirm that a Shiliu AI MCP server is available in the current Agent.
 3. Read the server's live tool catalog (`tools/list`) before selecting a tool. If the current client cannot load MCP but can execute commands, use `shiliu tools --json`; it includes the live `inputSchema`. Do not rely on a memorized tool name or schema when either live catalog path is accessible.
 4. Match the user's goal to the narrowest tool. Do not substitute a similarly named Douyin, TikTok, play-count, transcription, or media tool.
@@ -43,10 +43,16 @@ If the Agent cached an older catalog, reconnect or restart the MCP client, run t
 
 ## Update policy
 
+CLI 1.3.12 performs HTTPS archive updates without executing an external skills CLI. During an explicitly authorized installation, tell the user that the recorded Skill target can receive these targeted updates. Automatic refresh cannot create targets, change scope, adopt an unregistered copy or repair a missing directory. Only explicit skill install can do that.
+
+- `skipped / target_not_registered` is a normal success (exit 0). Silently continue the original task, including when JSON contains unmanagedInstallations. Do not run install or --force. Show orphan paths and registration/removal options only during a user-requested installation, upgrade or diagnosis; never delete other Skills or shared lock files.
+- `target_missing` or `target_migration_required` means the target needs explicit installation. Keep existing files; report this during installation/diagnosis and do not repair automatically.
+- Old global CLI versions remain old even if the npx proxy is new. During an authorized update verify shiliu --version is at least 1.3.12, then reconnect MCP. Do not automatically upgrade software during ordinary tasks.
+
 Ordinary Shiliu AI tasks may select this Skill automatically. Run `shiliu skill refresh` once at the start of each matching user task. Its persistent per-project 24-hour cooldown prevents repeated network checks and it invokes only the targeted `shiliu-ai-mcp` update when due.
 
 - If `shiliu skill refresh` is unavailable, tell the user that the Shiliu CLI should be updated and continue with the installed Skill; do not install or update unrelated software automatically.
-- If the targeted check fails because the network or `skills` CLI is unavailable, briefly report the failure and continue with the installed Skill plus live `tools/list`. Failed attempts also enter the 24-hour cooldown, so do not retry unless the user explicitly requests `shiliu skill refresh --force`.
+- If the targeted check fails because the network or official archive is unavailable, briefly report the failure and continue with the installed Skill plus live `tools/list`. Failed attempts also enter the 24-hour cooldown, so do not retry unless the user explicitly requests `shiliu skill refresh --force`.
 - A live `tools/list` change does not require a Skill update. Always read it after the refresh because it remains the source of truth for tools and schemas.
 - The refreshed files may not replace instructions already loaded into the current Agent context. Continue the current task safely and use the refreshed Skill automatically in the next task or reloaded session.
 - Do not run an unscoped `skills update`; `shiliu skill refresh` owns the targeted update behavior.

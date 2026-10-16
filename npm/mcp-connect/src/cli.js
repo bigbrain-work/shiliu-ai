@@ -62,6 +62,7 @@ function printHelp() {
   shiliu call <tool> [--args-stdin | --args-file <path> | --args <json>] [--dry-run]
   shiliu call <tool> --args-file <path> --out <path> [--force]
   shiliu skill install --agent <name> [--scope project|user] [--json]
+  shiliu skill install --target-dir <path> [--scope project|user] [--json]
   shiliu skill refresh [--force] [--json]
   shiliu update
   shiliu logout
@@ -95,6 +96,7 @@ function printHelp() {
       --args <json>   内联工具参数 JSON（仅适合简单参数）
       --out <path>    将完整工具结果安全保存到文件
       --scope <scope> Skill 安装范围：project 或 user
+      --target-dir <path> 由当前客户端选择的 Skill 父目录；CLI 从官网校验并安装
       --session <id>  指定待继续的登录会话
       --json          输出机器可读 JSON
   -h, --help          显示帮助
@@ -681,6 +683,7 @@ export async function runCli(argv = process.argv.slice(2)) {
         cwd: process.cwd(),
         agent: options.agent,
         scope: options.skillScope,
+        targetDirectory: options.skillTargetDirectory,
         dryRun: options.dryRun,
         json: options.json,
       });
