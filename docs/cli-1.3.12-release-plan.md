@@ -152,7 +152,7 @@ ssh root@8.147.105.37 "python3 /tmp/ops_release_merge_prod.py --service-id shili
 shiliu call get_douyin_video_play_count --args-file $knownFailureArguments --out $failureEvidence
 ```
 
-检查完整 MCP 结果有 isError=true、原错误提示，无 JSON-RPC error/-32603；再在同一个已连接的旧代理 MCP 会话中核对 tools/list 和连接状态。单独 shiliu tools 建立的新连接不能证明旧连接没有被清空。结合日志确认失败发生在扣点前，不重复调用。**已知下游失败样本目前未准备**，须在发布前确定并核对是否收费；不能用缺参/随意非法链接代替非零业务码，也不能凭模拟测试声称生产验收完成。没有合适样本时明确保留此项未验，而不是制造生产下游故障。
+检查完整 MCP 结果有 isError=true、原错误提示，无 JSON-RPC error/-32603；再在同一个已连接的旧代理 MCP 会话中核对 tools/list 和连接状态。单独 shiliu tools 建立的新连接不能证明旧连接没有被清空。结合日志确认失败发生在扣点前，不重复调用。**此故障模板仍需单独准备已知下游失败样本**，后续执行模板前须核对是否收费；不能用缺参/随意非法链接代替非零业务码，也不能凭模拟测试声称生产验收完成。没有合适样本时明确保留此项未验，而不是制造生产下游故障。
 
 ## 4. 旧用户通知（本轮已发布；后续按实际授权渠道）
 
