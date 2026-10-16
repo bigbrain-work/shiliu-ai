@@ -31,7 +31,7 @@ Identify the current Agent, shell, and runtime that will launch MCP. The CLI and
 | --- | --- | --- |
 | A | Remote HTTP MCP with a Shiliu-supported interactive authorization flow | Use the published HTTP MCP instructions; no local Node is required. This flow is not yet offered by this guide, so do not invent a URL or OAuth procedure. |
 | B | Local stdio MCP and a supported writable configuration | Use the built-in `shiliu install` adapter. |
-| C | Local stdio MCP configured only through a GUI or an unknown format | Generate candidates, run `shiliu doctor`, and give the user a field-by-field GUI configuration. |
+| C | Local stdio MCP configured manually through a GUI, a client-documented file, or an unknown format | Generate candidates, run `shiliu doctor`, and configure only through the client's documented mechanism. |
 | D | No MCP support, but commands and Skill instructions are available | Use `shiliu tools --json` and `shiliu call`; never build a custom JSON-RPC client. |
 | E | Neither MCP nor local command execution | Report that the current client is unsupported until Layer A is available. |
 
