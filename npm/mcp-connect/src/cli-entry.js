@@ -1,5 +1,6 @@
 import { createDiagnosticReporter, classifyFatalError, McpDiagnosticError } from "./mcp-diagnostics.js";
-import { parseCliArguments } from "./arguments.js";
+import { inspectCliInvocation, parseCliArguments } from "./arguments.js";
+import { formatCliErrorPayload } from "./cli-errors.js";
 import { PACKAGE_VERSION } from "./constants.js";
 import { runtimeFailureDetails, runtimeIdentity, checkRepairLock } from "./runtime-preflight.js";
 
@@ -12,7 +13,8 @@ export async function runEntry({
   argv = process.argv.slice(2), loadCli = () => import("./cli.js"),
   nodeVersion = process.versions.node, reporter = createDiagnosticReporter(), processImpl = process,
 } = {}) {
-  const mcp = argv.includes("mcp") || argv.includes("proxy");
+  const invocation = inspectCliInvocation(argv);
+  const mcp = ["mcp", "proxy"].includes(invocation.command);
   let cli;
   let fatalReport;
   const fatal = (error, stage) => {
@@ -37,7 +39,13 @@ export async function runEntry({
     }
     let options;
     try { options = parseCliArguments(argv); }
-    catch { throw new McpDiagnosticError("CONFIG_INVALID", "argument_parse"); }
+    catch (error) {
+      if (mcp) throw new McpDiagnosticError("CONFIG_INVALID", "argument_parse");
+      if (invocation.json) console.error(JSON.stringify(formatCliErrorPayload(error), null, 2));
+      else console.error(`错误：${error.message}`);
+      processImpl.exitCode = 1;
+      return;
+    }
     if (options.version && !options.help) { console.log(PACKAGE_VERSION); return; }
     if (["doctor", "repair"].includes(options.command) && !options.help) {
       if (options.command === "doctor") {
@@ -64,7 +72,7 @@ export async function runEntry({
     if (mcp || error?.diagnosticCode) await fatal(error, "mcp_start");
     else {
       // Preserve the established CLI login/poll error JSON contract outside MCP mode.
-      if (argv.includes("--json")) console.error(JSON.stringify(cli.formatCliError(error), null, 2));
+      if (invocation.json) console.error(JSON.stringify(cli.formatCliError(error), null, 2));
       else console.error(`错误：${error.message}`);
       processImpl.exitCode = 1;
     }
