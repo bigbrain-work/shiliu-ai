@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFile } from "node:fs/promises";
+import { inspectRepairLock } from "./repair-lock-state.js";
 import { PACKAGE_VERSION } from "./constants.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,18 +37,12 @@ export function runtimeIdentity() {
     node_path: process.execPath, install_root: ROOT, package_version: PACKAGE_VERSION });
 }
 
-export async function checkRepairLock(env = process.env) {
-  const entry = path.resolve(ROOT, "../../..");
+export async function checkRepairLock(env = process.env, { root = ROOT, kill } = {}) {
+  const entry = path.resolve(root, "../../..");
   if (path.basename(path.dirname(entry)) !== "_npx") return;
   const cache = path.dirname(path.dirname(entry));
-  try {
-    const text = await readFile(path.join(cache, ".shiliu-mcp-repair.lock"), "utf8");
-    const owner = JSON.parse(text);
-    if (owner.probe_id && owner.probe_id === env.SHILIU_REPAIR_PROBE_ID) return;
-    const error = Object.assign(new Error("repair in progress"), { code: "ENOENT", runtimeReason: "REPAIR_IN_PROGRESS" });
-    throw error;
-  } catch (error) {
-    if (error.code === "ENOENT" && !error.runtimeReason) return;
-    throw error;
-  }
+  const lock = await inspectRepairLock(path.join(cache, ".shiliu-mcp-repair.lock"), { kill });
+  if (["absent", "stale"].includes(lock.state)) return;
+  if (lock.owner?.probe_id && lock.owner.probe_id === env.SHILIU_REPAIR_PROBE_ID) return;
+  throw Object.assign(new Error("repair in progress"), { code: "ENOENT", runtimeReason: "REPAIR_IN_PROGRESS" });
 }

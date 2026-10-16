@@ -72,6 +72,9 @@ export function createDiagnosticReporter({ home = os.homedir(), stderr = process
         pid: process.pid, ...diagnosticSummary(code, stage, fatal), diagnostic_path: logPath,
         runtime: runtime ? safeRuntimeDetails(runtime) : runtimeIdentity(),
       };
+      if (record.runtime?.reason === "REPAIR_IN_PROGRESS") {
+        record.action = "此缓存正在修复或锁持有者无法确认。等待修复结束后重连；异常中断时核对 repair 锁中的 PID，不要重装 CLI 或删除整个缓存。";
+      }
       const line = `${JSON.stringify(record)}\n`;
       try { stderr.write(line); } catch { /* stderr may already be closed */ }
       queue = queue.then(async () => {
@@ -95,6 +98,9 @@ export function parseDiagnosticOutput(stderr) {
       if (parsed.component !== "shiliu_mcp" || !hasOwn(DIAGNOSTIC_CODES, parsed.code)) continue;
       const summary = diagnosticSummary(parsed.code, parsed.stage, parsed.fatal === true);
       if (parsed.runtime) summary.runtime = safeRuntimeDetails(parsed.runtime);
+      if (summary.runtime?.reason === "REPAIR_IN_PROGRESS") {
+        summary.action = "此缓存正在修复或锁持有者无法确认。等待修复结束后重连；异常中断时核对 repair 锁中的 PID，不要重装 CLI 或删除整个缓存。";
+      }
       if (latest && parsed.code === "CONNECTION_CLOSED") continue;
       if (!latest || summary.fatal || !latest.fatal) latest = summary;
     } catch { /* Third-party output is deliberately not included in reports. */ }
