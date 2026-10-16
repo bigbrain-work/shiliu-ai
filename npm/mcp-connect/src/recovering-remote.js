@@ -1,18 +1,19 @@
-const UNAUTHORIZED_MESSAGE = /(?:\b401\b|unauthori[sz]ed|token[^\n]*(?:expired|invalid))/iu;
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 
 export function isUnauthorizedError(error) {
   let current = error;
   for (let depth = 0; current && depth < 6; depth += 1) {
+    // A downstream failure inside a JSON-RPC error is not platform auth.
     if (
-      current.status === 401 ||
-      current.statusCode === 401 ||
-      current.response?.status === 401 ||
-      current.code === 401 ||
-      current.code === "401"
-    ) {
-      return true;
-    }
-    if (UNAUTHORIZED_MESSAGE.test(String(current.message || ""))) return true;
+      current instanceof McpError ||
+      (Number.isInteger(current.code) && current.code < 0)
+    ) return false;
+    if (current instanceof UnauthorizedError) return true;
+    if (current instanceof StreamableHTTPError) return current.code === 401;
+    const status = current.status ?? current.statusCode ?? current.response?.status;
+    if (status !== undefined) return status === 401;
     current = current.cause;
   }
   return false;

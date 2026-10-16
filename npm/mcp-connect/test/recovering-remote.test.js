@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
+import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { McpError } from "@modelcontextprotocol/sdk/types.js";
 
 import {
   connectRecoveringRemote,
@@ -15,7 +18,8 @@ function remote({ listTools, close = async () => {} }) {
 }
 
 test("recognizes the HTTP authorization errors returned by MCP transports", () => {
-  assert.equal(isUnauthorizedError(new Error("HTTP 401: Unauthorized")), true);
+  assert.equal(isUnauthorizedError(new StreamableHTTPError(401, "Unauthorized")), true);
+  assert.equal(isUnauthorizedError(new UnauthorizedError("No auth provider")), true);
   assert.equal(isUnauthorizedError({ statusCode: 401 }), true);
   assert.equal(
     isUnauthorizedError(new Error("outer", { cause: { response: { status: 401 } } })),
@@ -28,7 +32,7 @@ test("reloads credentials, reconnects, and retries once after a 401", async () =
   const closed = [];
   const first = remote({
     listTools: async () => {
-      throw new Error("Error POSTing to endpoint (HTTP 401): Unauthorized");
+      throw new StreamableHTTPError(401, "Unauthorized");
     },
     close: async () => closed.push("first"),
   });
@@ -50,6 +54,29 @@ test("reloads credentials, reconnects, and retries once after a 401", async () =
   assert.deepEqual(connections, ["expired-token", "fresh-token"]);
   assert.deepEqual(closed, ["first"]);
   await recovering.close();
+});
+
+test("business messages, RPC codes and downstream causes never imply platform auth", () => {
+  for (const error of [
+    new Error("HTTP 401: Unauthorized"),
+    new Error("downstream token is invalid or expired"),
+    { code: 401 }, { code: "401" }, { name: "UnauthorizedError" },
+    new McpError(401, "business code"),
+    Object.assign(new McpError(-32603, "token invalid 401"), {
+      status: 401, cause: new StreamableHTTPError(401, "downstream"),
+    }),
+    { code: -32603, cause: { status: 401 } },
+    Object.assign(new StreamableHTTPError(500, "upstream 401"), {
+      cause: { status: 401 },
+    }),
+    { status: 503, cause: { status: 401 } },
+  ]) assert.equal(isUnauthorizedError(error), false);
+  const cyclic = new Error("cycle");
+  cyclic.cause = cyclic;
+  assert.equal(isUnauthorizedError(cyclic), false);
+  let tooDeep = { status: 401 };
+  for (let depth = 0; depth < 6; depth += 1) tooDeep = { cause: tooDeep };
+  assert.equal(isUnauthorizedError(tooDeep), false);
 });
 
 test("concurrent 401 responses share one credential reload and reconnect", async () => {
