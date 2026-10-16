@@ -53,7 +53,9 @@ An application-bundled Node runtime is not automatically a persistent system run
 
 ## 2. Install CLI
 
-Existing users must update the global CLI to 1.3.12 before running skill refresh. Updating an npx MCP proxy does not update the global shiliu command. After upgrading, verify shiliu --version separately and reconnect MCP. Version 1.3.11 could install unregistered Skill copies into new projects; the new version reports existing unmanaged copies without deleting or adopting them. Inspect unmanagedInstallations during explicit upgrade/diagnosis. Do not claim this candidate is published until npm verification succeeds.
+Upgrade notice for existing users: CLI 1.3.11 can write unregistered Skill copies into new projects. Rerun one of the official installers below to upgrade the global CLI. Updating an npx MCP proxy does not upgrade the global shiliu command. Verify shiliu --version is at least 1.3.12 before running skill refresh, then reconnect MCP. Version 1.3.12 is published on npm.
+
+Upgrading does not delete old copies. During explicit upgrade or diagnosis, inspect shiliu skill refresh --json and its unmanagedInstallations field. Register each intended copy using an explicit skill install command, or manually remove only the specific shiliu-ai-mcp directory after review. Never delete an entire .hermes/skills directory or shared skills-lock.json. Ordinary tasks must silently continue on skipped/target_not_registered and must not install or clean up automatically.
 
 Choose exactly one matching installer.
 
