@@ -183,7 +183,8 @@ test("credentials revoked during a business call keep MCP alive and a new login 
     revoked = true;
     const failure = await client.callTool({ name: "echo", arguments: {} });
     assert.equal(failure.isError, true);
-    assert.equal(failure.structuredContent.status, "login_required");
+    assert.equal(failure.structuredContent.status, "checking_login");
+    assert.equal(failure.structuredContent.outcome, "unknown");
     assert.deepEqual(await client.ping(), {});
     token = "new-token";
     assert.ok((await client.listTools()).tools.some((tool) => tool.name === "echo"));

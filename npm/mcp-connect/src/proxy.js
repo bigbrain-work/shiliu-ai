@@ -11,6 +11,7 @@ import { connectRemote } from "./remote-client.js";
 import { createProxySession, refreshBriefly } from "./proxy-session.js";
 import { runProxyLogin, loginToolResult, safeLoginResult } from "./proxy-login.js";
 import { createDiagnosticReporter } from "./mcp-diagnostics.js";
+import { closeBriefly } from "./request-context.js";
 
 const EMPTY_SCHEMA = { type: "object", properties: {}, additionalProperties: false };
 export const LOGIN_TOOLS = [
@@ -41,6 +42,7 @@ export async function runProxy({
   resolveAuth = () => resolveAuthorization({ home, platform, env, authUrl, tokenStore }),
   remoteConnector = connectRemote, loginRunner = runProxyLogin,
   pollIntervalMs = 5000, allowLocalhost = false,
+  requestOptions, stdin = process.stdin,
   diagnosticReporter = createDiagnosticReporter({ home }),
 } = {}) {
   const server = new Server(
@@ -52,14 +54,27 @@ export async function runProxy({
   );
   let initialized = false;
   let closing = false;
+  let shutdownPromise;
   let interval;
   const session = createProxySession({
-    url, resolveAuth, connectRemote: remoteConnector,
+    url, resolveAuth, connectRemote: remoteConnector, requestOptions,
     reportDiagnostic: (code, options) => { void diagnosticReporter.record(code, options); },
     onToolsChanged: () => {
       if (initialized && !closing) void server.sendToolListChanged().catch(() => {});
     },
   });
+
+  const requestContext = (request, extra) => {
+    const progressToken = request.params?._meta?.progressToken;
+    return {
+      signal: extra.signal,
+      onprogress: progressToken === undefined ? undefined : ({ progress, total, message }) =>
+        extra.sendNotification({ method: "notifications/progress", params: {
+          progressToken, progress, ...(total === undefined ? {} : { total }),
+          ...(message === undefined ? {} : { message }),
+        } }),
+    };
+  };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     await refreshBriefly(session);
@@ -85,7 +100,7 @@ export async function runProxy({
       if (payload.status === "success") await refreshBriefly(session);
       return loginToolResult(payload);
     }
-    const response = await session.invoke("callTool", request.params);
+    const response = await session.invoke("callTool", request.params, requestContext(request, extra));
     return response.unavailable ? textResult(response.unavailable, true) : response.result;
   });
 
@@ -94,32 +109,37 @@ export async function runProxy({
     [ListResourceTemplatesRequestSchema, "listResourceTemplates", { resourceTemplates: [] }],
     [ListPromptsRequestSchema, "listPrompts", { prompts: [] }],
   ]) {
-    server.setRequestHandler(schema, async (request) => {
+    server.setRequestHandler(schema, async (request, extra) => {
       await refreshBriefly(session);
-      const response = session.supports(method) ? await session.invoke(method, request.params) : {};
+      const response = session.supports(method) ? await session.invoke(method, request.params, requestContext(request, extra)) : {};
       return response.result || empty;
     });
   }
   for (const [schema, method] of [[ReadResourceRequestSchema, "readResource"], [GetPromptRequestSchema, "getPrompt"]]) {
-    server.setRequestHandler(schema, async (request) => {
+    server.setRequestHandler(schema, async (request, extra) => {
       await session.refresh();
       if (session.snapshot().remote_connected && !session.supports(method)) {
         throw new McpError(ErrorCode.MethodNotFound, "远程服务未提供此功能");
       }
-      const response = await session.invoke(method, request.params);
+      const response = await session.invoke(method, request.params, requestContext(request, extra));
       if (response.unavailable) throw new McpError(ErrorCode.InternalError, response.unavailable.message);
       return response.result;
     });
   }
 
-  const shutdown = async () => {
-    if (closing) return;
+  const shutdown = () => {
+    if (closing) return shutdownPromise;
     closing = true;
     clearInterval(interval);
     process.removeListener("SIGINT", shutdown);
     process.removeListener("SIGTERM", shutdown);
-    await Promise.allSettled([server.close(), session.close()]);
-    await diagnosticReporter.record("CONNECTION_CLOSED", { stage: "mcp_shutdown" });
+    stdin.removeListener("end", shutdown);
+    stdin.removeListener("close", shutdown);
+    shutdownPromise = (async () => {
+      await closeBriefly(() => Promise.allSettled([server.close(), session.close()]));
+      await closeBriefly(() => diagnosticReporter.record("CONNECTION_CLOSED", { stage: "mcp_shutdown" }));
+    })();
+    return shutdownPromise;
   };
   server.onclose = shutdown;
   server.onerror = () => { void diagnosticReporter.record("PROTOCOL_ERROR", { stage: "mcp_transport" }); };
@@ -127,12 +147,16 @@ export async function runProxy({
     initialized = true;
     void session.refresh();
     if (pollIntervalMs > 0) {
-      interval = setInterval(() => { void session.refresh(); }, pollIntervalMs);
+      interval = setInterval(() => { void session.refresh({ force: false }); }, pollIntervalMs);
       interval.unref();
     }
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+  if (transport instanceof StdioServerTransport) {
+    stdin.once("end", shutdown);
+    stdin.once("close", shutdown);
+  }
   try { await server.connect(transport); }
   catch (error) { await shutdown(); throw error; }
   return { server, session, close: shutdown };
