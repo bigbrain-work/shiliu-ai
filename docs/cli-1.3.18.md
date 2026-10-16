@@ -26,9 +26,17 @@
 
 ## 验证及发布记录
 
-候选版本：本地 Node 22 和 Node 18.14.1 全量测试、Windows PowerShell 5.1 安装器、构建与分发完整性检查；PR CI 必须通过后合入。
+产品 PR [#34](https://github.com/bigbrain-work/shiliu-ai/pull/34) 合入 `9b482ec864db89fb2e551824a21cd17ebc07fc3b`。PR CI `38858480305` 和 main CI `38858718275` 三项全部通过：Linux Node 22、Node 18.14.1、Windows；Windows 完整 201 项通过。PowerShell 5.1 安装器分支、真实中文路径进程、分发完整性和构建测试通过。实际 Node 16.20.2 入口退出 3，返回明确的 18.14.1 提示。
 
-发布后另行核对公开包严格 engines 冷安装、audit=0、smoke，以及 Claude Code 原生免费余额、客户端收到的完整工具目录、未登记项目静默跳过和扫码流程。公开包、生产网站与真实客户端的最终结果在验收后补记，不把候选测试算成公开验收。
+2026-10-16 通过 GitHub Release 触发既有 Trusted Publishing，一次发布 npm 1.3.18，工作流 `38859009868` 成功。下载公开 tarball 的 SHA-512/SHA-1 与元数据一致，42 个文件逐个匹配冻结提交；tarball SHA-256 `0538b5879ba8db32ec32f5c089e4f357ee24f2341351d5a7b172718cc0d0394b`。Node 18.14.1/npm 9.9.4 使用新的安装前缀和缓存严格 engines 冷安装，消费 audit=0，9 项 smoke 通过。真实公开入口 `--bogus`、`login --json --session bad`、`--agent mcp`、`--network --json` 以及 `--home - mcp --bogus` 的退出码和错误契约均通过。
+
+官网从同一 main 构建，原有 11 文件与新增 `recovery.txt` 共 12 文件，公开入口及重定向终点逐字节一致。Skill 归档摘要 `sha256:984368d7f3d3e7644e91721ff20c2d0510101020e1c4a66d238d55aed6354ed8`；规范 HTTPS 同源安装可用。已有 11 文件下载备份、SHA256 并发核对、diff 审核、原子替换和 nginx -t 前后校验完成，新恢复文档在本轮新增。Nginx 配置未改，安装文件最低 CLI 保持 1.3.12。
+
+Claude Code 2.1.201 在新的测试项目中以原生 Skill 工具加载官网 Skill，正式 CLI 显式安装并登记目标，原生 MCP 免费余额调用成功且 `charged=false`、`consumed_credits=0`。实际客户端发出的 tools/list 响应含 31 项，证据来自仅透传字节的观察器，不由模型猜测工具数量。另一个未登记 Git 项目的普通任务自动执行一次 refresh，静默跳过，24 个文件摘要不变，无安装尝试、无 --force、无用户提醒。两次余额调用均免费，没有调用收费业务工具。
+
+原生 shiliu_login 创建二维码、原生 shiliu_login_poll 兑换成功并保存凭据，扫码流程通过。
+
+本机通过当次 HTTPS 下载、与 main SHA256 一致的官方安装器，将全局 shiliu 从 1.3.9 升为 1.3.18，并完成 doctor initialize/tools/list 验证。原目录中误生成的 --help 目录确认没有文件或链接后，仅删除空目录树；没有改动后端原目录 123 个文件。
 
 ## 已知限制
 

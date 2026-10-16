@@ -40,7 +40,7 @@ npm.cmd pack --json
 
 ```powershell
 powershell.exe -NoProfile -File scripts/test-install-windows.ps1
-node --test scripts/public-skill-integrity.test.mjs
+node --test scripts/public-skill-integrity.test.mjs scripts/p3-installer-build.test.mjs
 node scripts/build-public-site-assets.mjs D:\program\.release\RELEASE_ID\public
 node scripts/verify-skill-distribution.mjs D:\program\.release\RELEASE_ID\public\.well-known\agent-skills
 git diff --check
@@ -87,9 +87,9 @@ shiliu.cmd --version
 
 先等 npm 公开最新版验证通过，再提升官网最低版本，避免客户收到不可安装的版本要求。
 
-1. 三个安装文件唯一源码是 CLI 仓库根目录的 `install.txt`、`install.ps1`、`install.sh`。从同一候选生成公开文件，不手工维护前端副本。
+1. 三个安装文件唯一源码是 CLI 仓库根目录的 `install.txt`、`install.ps1`、`install.sh`。公开恢复文档为 `recovery.txt`。Skill 变更时一并构建归档、逐文件内容与索引；当前共 12 文件（原有 11 文件加恢复文档）。从同一候选生成公开文件，不手工维护前端副本。
 2. 下载当次线上静态文件并记录 SHA256；上传到新的候选目录，校验候选内容和摘要。
-3. 发布前再次核对线上三个文件摘要，发现并发变化则停止并重新准备。创建时间戳备份，再逐文件原子替换；保留其他页面、资源和 Skill 分发文件。
+3. 发布前再次核对本轮全部发布文件的线上摘要，发现并发变化则停止并重新准备。创建时间戳备份，再逐文件原子替换；保留其他页面、资源和 Skill 分发文件。
 4. 已有路由无需修改 Nginx。确需修改时，遵守 `D:\program\AGENTS.md`：当次下载 live 配置、SHA256 并发核对、diff 审核、远端备份、候选验证、替换后验证、reload 和路由回测。
 5. 从公网分别下载大写公开入口和最终小写 www 路径，验证 HTTP、正文、版本与逐文件 SHA256，不能仅看首页 200。
 6. 在干净安装前缀执行公开安装器，检查 `CLI installed.` 和实际 CLI 版本。调用 `shiliu doctor --transport stdio --json`，区分本地 stdio、登录状态与远程业务连接。
@@ -169,3 +169,9 @@ PR #22 已合并，源码提交为 `0045913bed78986cc1aa3711d98c66c3f40a6e6f`。
 1.3.12 的修复、依赖评估、发布结果及旧用户升级通知见 `docs/cli-1.3.12.md` 和发布计划；1.3.13 的参数错误契约见 `docs/cli-1.3.13.md`。1.3.14 的 worker 截止时间见 `docs/cli-1.3.14.md`。各版本独立发布，不能把候选说明当成公开包验收。2026-10-16 已在 Claude Code 2.1.201 通过原生 Skill 发现、31 个 MCP 工具及免费余额调用验收；未登记测试项目的普通任务静默跳过 refresh，未写文件。Codex CLI 0.116.0 因当前配置模型不受账号支持而未完成原生验收。
 
 1.3.15 的认证错误分类、1.3.16 的 repair 锁/UTF-8 以及1.3.17的连接生命周期也已分别发布，公开包和真实客户端证据见各版本说明。最低运行时严格安装、audit及smoke按每个公开版本单独验收，不以另一版本的结果代替。
+
+### 2026-10-16：1.3.18 统一修复发布
+
+PR #29 的余额验收要求及发布协作约定先合入并同步官网。随后 PR #34 集中完成 P2 复核问题及 P3 登录、凭据、配置、下载/文件、安装器和文档修复，中间没有发布 npm 版本，统一发布 1.3.18。201 项最终完整测试及 Node 22/Node 18.14.1/Windows CI 通过；公开包 42 文件匹配冻结 main，严格最低运行时冷安装、audit=0、smoke 及 Claude Code 原生免费余额、31 项客户端目录、未登记项目静默跳过验收结果见 [1.3.18 发布记录](docs/cli-1.3.18.md)。扫码状态以该记录的实际结果为准，不把展示二维码当成登录成功。
+
+官网 12 文件与 main 一致，新增公开 recovery.txt；安装脚本最低 CLI 保持 1.3.12。本机全局 CLI 已通过官方安装器升级到 1.3.18。后端原目录 123 文件未纳入本批修复。
