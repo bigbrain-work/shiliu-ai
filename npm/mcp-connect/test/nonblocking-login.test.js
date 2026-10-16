@@ -10,7 +10,7 @@ import {
   formatCliError,
   startPendingDeviceLogin,
 } from "../src/cli.js";
-import { DeviceAuthError } from "../src/device-auth-client.js";
+import { DeviceAuthError, removeLoginQrCode } from "../src/device-auth-client.js";
 
 test("machine-readable login continuation returns an Agent-displayable QR image", () => {
   const result = buildLoginInstructions(
@@ -96,7 +96,7 @@ test("pending poll results preserve the server authorization stage", () => {
   assert.equal(result.authorization_stage, "processing_callback");
 });
 
-test("an unexpired pending login is reused instead of creating another session", async () => {
+test("an unexpired pending login regenerates an untrusted legacy QR without a new session", async () => {
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "shiliu-reuse-login-"),
   );
@@ -134,11 +134,12 @@ test("an unexpired pending login is reused instead of creating another session",
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 
-  assert.equal(saved.length, 0);
+  assert.equal(saved.length, 1);
   const result = JSON.parse(output.join("\n"));
   assert.equal(result.reused_session, true);
   assert.equal(result.login_session_id, "ABCD-2345");
-  assert.equal(result.qr_code_path, qrCodePath);
+  assert.notEqual(result.qr_code_path, qrCodePath);
+  await removeLoginQrCode(result.qr_code_path);
 });
 
 test("machine-readable errors distinguish expiry, rejection, and networking", () => {
@@ -162,7 +163,8 @@ test("machine-readable errors distinguish expiry, rejection, and networking", ()
       .status,
     "rejected",
   );
-  assert.equal(formatCliError(new TypeError("fetch failed")).status, "network_error");
+  assert.equal(formatCliError(new TypeError("fetch failed", { cause: { code: "ECONNRESET" } })).status, "network_error");
+  assert.equal(formatCliError(new Error("unknown option --network")).error, "command_failed");
 });
 
 test("machine-readable continuation rejects a command-injection user code", () => {

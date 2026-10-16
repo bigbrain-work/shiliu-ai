@@ -6,11 +6,13 @@ import {
 
 function parseVersion(value) {
   const match = String(value).match(
-    /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/u,
+    /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/u,
   );
   if (!match) return null;
+  if (match.slice(1, 4).some(part => part.length > 1 && part.startsWith("0"))) return null;
+  if (match[4] && match[4].split(".").some(part => !part || (/^\d+$/u.test(part) && part.length > 1 && part.startsWith("0")))) return null;
   return {
-    numbers: match.slice(1, 4).map(Number),
+    numbers: match.slice(1, 4).map(BigInt),
     prerelease: match[4] || "",
   };
 }
@@ -27,7 +29,18 @@ export function compareVersions(left, right) {
   if (a.prerelease === b.prerelease) return 0;
   if (!a.prerelease) return 1;
   if (!b.prerelease) return -1;
-  return a.prerelease.localeCompare(b.prerelease);
+  const leftParts = a.prerelease.split("."), rightParts = b.prerelease.split(".");
+  for (let i = 0; i < Math.max(leftParts.length, rightParts.length); i++) {
+    const x = leftParts[i], y = rightParts[i];
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    if (x === y) continue;
+    const numericX = /^\d+$/u.test(x), numericY = /^\d+$/u.test(y);
+    if (numericX && numericY) return BigInt(x) > BigInt(y) ? 1 : -1;
+    if (numericX !== numericY) return numericX ? -1 : 1;
+    return x > y ? 1 : -1;
+  }
+  return 0;
 }
 
 export async function checkForUpdates({ fetchImpl = fetch } = {}) {

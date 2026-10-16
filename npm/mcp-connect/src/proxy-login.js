@@ -1,7 +1,5 @@
 import { spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { readLoginQrCode } from "./device-auth-client.js";
 import { fileURLToPath } from "node:url";
 
 const CLI_PATH = fileURLToPath(new URL("../bin/shiliu.js", import.meta.url));
@@ -28,6 +26,7 @@ export function safeLoginResult(payload, ok) {
   const result = Object.fromEntries(SAFE_FIELDS
     .filter((key) => ["string", "number", "boolean"].includes(typeof payload?.[key]))
     .map((key) => [key, payload[key]]));
+  if (payload?.credential_persisted === false) return { status: "error", message: "登录已兑换，但系统凭据库仍未保存成功；请在本机检查凭据库后重新登录。二维码已作废。" };
   if (!ok || !["success", "authorization_pending", "slow_down"].includes(result.status)) {
     return { status: "error", message: "登录操作未完成，请在本机运行 shiliu login 检查授权服务或系统凭据库；不要发送任何凭据。" };
   }
@@ -47,7 +46,7 @@ export function runProxyLogin(action, options = {}) {
     });
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => { child.kill(); }, 30000);
+    const timer = setTimeout(() => { child.kill(); }, 180000);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     const capture = (target) => (chunk) => {
@@ -68,11 +67,9 @@ export function runProxyLogin(action, options = {}) {
 
 export async function loginToolResult(payload) {
   const content = [{ type: "text", text: JSON.stringify(payload) }];
-  const directory = path.resolve(os.tmpdir(), "shiliu-ai");
   if (payload.qr_code_path && SESSION_PATTERN.test(payload.login_session_id || "")) {
-    const expected = path.join(directory, `shiliu-login-${payload.login_session_id}.png`);
-    if (path.resolve(payload.qr_code_path) === expected) {
-      const png = await readFile(expected).catch(() => null);
+    if (payload.qr_code_path.endsWith(`shiliu-login-${payload.login_session_id}.png`)) {
+      const png = await readLoginQrCode(payload.qr_code_path).catch(() => null);
       if (png && png.length <= 1024 * 1024) content.push({ type: "image", mimeType: "image/png", data: png.toString("base64"), annotations: { audience: ["user"] } });
     }
   }

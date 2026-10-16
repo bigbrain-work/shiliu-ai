@@ -75,6 +75,7 @@ export function createDiagnosticReporter({ home = os.homedir(), stderr = process
       if (record.runtime?.reason === "REPAIR_IN_PROGRESS") {
         record.action = "此缓存正在修复或锁持有者无法确认。等待修复结束后重连；异常中断时核对 repair 锁中的 PID，不要重装 CLI 或删除整个缓存。";
       }
+      if (record.runtime?.reason === "NODE_VERSION_UNSUPPORTED") record.action = "需要 Node.js 18.14.1 或更新版本；请升级实际启动 CLI/MCP 的 Node 后重试。";
       const line = `${JSON.stringify(record)}\n`;
       try { stderr.write(line); } catch { /* stderr may already be closed */ }
       queue = queue.then(async () => {
@@ -101,6 +102,7 @@ export function parseDiagnosticOutput(stderr) {
       if (summary.runtime?.reason === "REPAIR_IN_PROGRESS") {
         summary.action = "此缓存正在修复或锁持有者无法确认。等待修复结束后重连；异常中断时核对 repair 锁中的 PID，不要重装 CLI 或删除整个缓存。";
       }
+      if (summary.runtime?.reason === "NODE_VERSION_UNSUPPORTED") summary.action = "需要 Node.js 18.14.1 或更新版本；请升级实际启动 CLI/MCP 的 Node 后重试。";
       if (latest && parsed.code === "CONNECTION_CLOSED") continue;
       if (!latest || summary.fatal || !latest.fatal) latest = summary;
     } catch { /* Third-party output is deliberately not included in reports. */ }

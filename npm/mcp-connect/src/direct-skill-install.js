@@ -59,7 +59,33 @@ async function fetchBytes(url, { fetchImpl, label }) {
   if (!response.ok) {
     throw new Error(`${label}下载失败：HTTP ${response.status}`);
   }
-  const bytes = Buffer.from(await response.arrayBuffer());
+  const finalUrl = new URL(response.url || url);
+  if (finalUrl.protocol !== "https:" || finalUrl.origin !== new URL(url).origin) {
+    await response.body?.cancel?.().catch(() => {});
+    throw new Error(`${label}重定向到不可信来源`);
+  }
+  const declaredSize = Number(response.headers?.get?.("content-length"));
+  if (declaredSize > MAX_SKILL_ARCHIVE_BYTES) {
+    await response.body?.cancel?.().catch(() => {});
+    throw new Error(`${label}大小超过 5 MiB`);
+  }
+  let bytes;
+  if (response.body?.getReader) {
+    const reader = response.body.getReader(), chunks = [];
+    let length = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > MAX_SKILL_ARCHIVE_BYTES) { await reader.cancel(); throw new Error(`${label}大小超过 5 MiB`); }
+        chunks.push(Buffer.from(value));
+      }
+      bytes = Buffer.concat(chunks, length);
+    } finally { reader.releaseLock(); }
+  } else {
+    bytes = Buffer.from(await response.arrayBuffer());
+  }
   if (bytes.length === 0 || bytes.length > MAX_SKILL_ARCHIVE_BYTES) {
     throw new Error(`${label}大小异常：${bytes.length} bytes`);
   }
@@ -73,6 +99,7 @@ export async function installSkillArchive({
   fetchImpl = fetch,
   extractImpl = extractTar,
   requireExisting = false,
+  removeBackup = rm,
 } = {}) {
   if (!targetDirectory) throw new Error("缺少 Skill 目标父目录");
   if (!sourceBaseUrl) throw new Error("缺少 Skill 官网来源");
@@ -211,8 +238,9 @@ export async function installSkillArchive({
       throw error;
     }
     if (backupCreated) {
-      await rm(backupPath, { recursive: true, force: true }).catch(() => {});
       backupCreated = false;
+      try { await removeBackup(backupPath, { recursive: true, force: true }); }
+      catch (error) { throw new Error(`Skill 已安装，但备份目录清理失败，请手动检查 ${backupPath}：${error.code || "unknown"}`); }
     }
     return {
       installPath,

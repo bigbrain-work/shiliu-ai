@@ -205,7 +205,7 @@ export async function clearPersistedApiKey({
       const profile = await readFile(profilePath, "utf8");
       const next = profile
         .split(/(?<=\n)/u)
-        .filter((line) => !line.includes("# shiliu-ai"))
+        .filter((line) => line.trimEnd() !== `. ${shellQuote(envFile)} # shiliu-ai`)
         .join("");
       if (next !== profile) await writeFile(profilePath, next, "utf8");
     } catch (error) {

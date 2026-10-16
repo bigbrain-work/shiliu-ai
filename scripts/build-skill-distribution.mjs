@@ -218,7 +218,11 @@ export async function buildSkillDistribution(outputDirectory) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const outputDirectory = process.argv[2];
-  if (!outputDirectory) {
+  if (outputDirectory === "--help") {
+    console.log("Usage: node scripts/build-skill-distribution.mjs <output-directory>");
+    process.exit(0);
+  }
+  if (!outputDirectory || outputDirectory.startsWith("-") || process.argv.length !== 3) {
     throw new Error(
       "Usage: node scripts/build-skill-distribution.mjs <output-directory>",
     );

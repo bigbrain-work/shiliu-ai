@@ -125,13 +125,15 @@ export async function createSystemEntry(
 ) {
   if (platform === "win32") {
     return {
-      async setPassword(password) {
+      async setPassword(password, options = {}) {
+        // Windows generic credentials allow at most 2560 bytes. Keyring stores UTF-16.
+        if (Buffer.byteLength(password, "utf16le") > 2560) throw workerError("KEYRING_VALUE_TOO_LARGE", "凭据超过 Windows 凭据管理器 1280 字符上限；未写入，请联系支持缩短令牌");
         await runWorker({
           operation: "set",
           service: KEYRING_SERVICE,
           account,
           password,
-        });
+        }, options);
       },
       async getPassword() {
         const result = await runWorker({
@@ -167,17 +169,62 @@ async function defaultPendingEntryFactory() {
   return createSystemEntry(PENDING_KEYRING_ACCOUNT);
 }
 
+const recovery = new WeakMap();
+
 export class TokenStore {
-  constructor({ entryFactory = defaultEntryFactory } = {}) {
+  constructor({ entryFactory = defaultEntryFactory, saveTimeoutMs = 60000, saveRetries = 1 } = {}) {
     this.entryFactory = entryFactory;
+    this.saveTimeoutMs = saveTimeoutMs;
+    this.saveRetries = saveRetries;
   }
 
-  async save(tokenSet) {
-    const entry = await this.entryFactory();
-    await entry.setPassword(JSON.stringify(validateTokenSet(tokenSet)));
+  get pendingSave() { return recovery.get(this.entryFactory); }
+
+  retain(tokenSet, expectedRefreshToken) {
+    const state = { tokenSet: validateTokenSet(tokenSet), expectedRefreshToken };
+    recovery.set(this.entryFactory, state);
+    return state;
+  }
+
+  discardPending() { recovery.delete(this.entryFactory); }
+
+  async save(tokenSet, { expectedRefreshToken } = {}) {
+    const state = this.pendingSave?.tokenSet === tokenSet ? this.pendingSave : this.retain(tokenSet, expectedRefreshToken);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const entry = await this.entryFactory();
+        await entry.setPassword(JSON.stringify(validateTokenSet(tokenSet)), { timeoutMs: this.saveTimeoutMs });
+        if (this.pendingSave === state) this.discardPending();
+        return { persisted: true };
+      } catch (error) {
+        if (error.code === "KEYRING_VALUE_TOO_LARGE") { this.discardPending(); throw error; }
+        if (attempt < this.saveRetries) continue;
+        return { persisted: false, warning: "系统凭据库写入失败；新令牌暂存当前进程内存，下次检查将重试保存。退出进程前若未保存成功，需要重新登录。" };
+      }
+    }
   }
 
   async load() {
+    if (this.pendingSave) return this.pendingSave.tokenSet;
+    return this.loadPersisted();
+  }
+
+  async flushPending() {
+    const state = this.pendingSave;
+    if (!state) return;
+    let stored;
+    try { stored = await this.loadPersisted(); }
+    catch { return { persisted: false }; }
+    if (state.expectedRefreshToken !== undefined &&
+        stored?.refreshToken !== state.expectedRefreshToken &&
+        stored?.refreshToken !== state.tokenSet.refreshToken) {
+      this.discardPending(); // Respect another process's logout or newer login.
+      return { persisted: true };
+    }
+    return this.save(state.tokenSet);
+  }
+
+  async loadPersisted() {
     const entry = await this.entryFactory();
     try {
       const serialized = await entry.getPassword();
@@ -190,6 +237,7 @@ export class TokenStore {
   }
 
   async clear() {
+    this.discardPending();
     const entry = await this.entryFactory();
     try {
       await entry.deletePassword();

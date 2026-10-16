@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import crossSpawn from "cross-spawn";
+import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -167,10 +167,12 @@ function execute(command, args, options = {}) {
   }
 
   const invocation = commandInvocation(command, args, options);
-  const result = spawnSync(invocation.command, invocation.args, {
+  const result = (options.spawnImpl || crossSpawn.sync)(invocation.command, invocation.args, {
     encoding: "utf8",
     windowsHide: true,
     shell: false,
+    env: options.env || process.env,
+    timeout: 30000,
   });
   if (result.error) {
     if (result.error.code === "ENOENT")
@@ -186,10 +188,26 @@ function execute(command, args, options = {}) {
   return { stdout: result.stdout || "", stderr: result.stderr || "" };
 }
 
-function isDuplicateError(error) {
-  return /already|exist|duplicate|已存在/iu.test(
+export function isDuplicateError(error) {
+  return /\balready exists\b|\bduplicate (?:server|name|configuration)\b|(?:服务器|配置|名称)已存在/iu.test(
     error.commandOutput || error.message,
   );
+}
+
+function replaceExisting(configPath, remove, add) {
+  // Capture exact bytes before the destructive remove. Restore on any add failure.
+  let snapshot;
+  try { snapshot = readFileSync(configPath); } catch (error) { if (error.code !== "ENOENT") throw error; }
+  if (!snapshot) throw new Error("客户端报告配置已存在，但无法备份原配置；未执行 remove");
+  remove();
+  try { add(); }
+  catch (error) {
+    const temporary = `${configPath}.${process.pid}.restore`;
+    try { writeFileSync(temporary, snapshot, { mode: 0o600, flag: "wx" }); renameSync(temporary, configPath); }
+    catch (restoreError) { throw new AggregateError([error, restoreError], "新增配置失败，恢复原配置也失败；请检查客户端配置备份"); }
+    finally { try { unlinkSync(temporary); } catch { /* Already renamed. */ } }
+    throw error;
+  }
 }
 
 export function configureCodex(options = {}) {
@@ -203,8 +221,8 @@ export function configureCodex(options = {}) {
     execute("codex", codexArguments(), options);
   } catch (error) {
     if (!isDuplicateError(error)) throw error;
-    execute("codex", ["mcp", "remove", SERVER_NAME], options);
-    execute("codex", codexArguments(), options);
+    replaceExisting(configPath, () => execute("codex", ["mcp", "remove", SERVER_NAME], options),
+      () => execute("codex", codexArguments(), options));
   }
   return {
     agent: "codex",
@@ -229,12 +247,11 @@ export function configureClaude(options = {}) {
     execute("claude", addArgs, options);
   } catch (error) {
     if (!isDuplicateError(error)) throw error;
-    execute(
+    replaceExisting(configPath, () => execute(
       "claude",
       ["mcp", "remove", "--scope", "user", SERVER_NAME],
       options,
-    );
-    execute("claude", addArgs, options);
+    ), () => execute("claude", addArgs, options));
   }
   return {
     agent: "claude",

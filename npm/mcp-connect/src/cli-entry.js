@@ -1,5 +1,5 @@
 import { createDiagnosticReporter, classifyFatalError, McpDiagnosticError } from "./mcp-diagnostics.js";
-import { inspectCliInvocation, parseCliArguments } from "./arguments.js";
+import { inspectCliInvocation } from "./cli-invocation.js";
 import { formatCliErrorPayload } from "./cli-errors.js";
 import { PACKAGE_VERSION } from "./constants.js";
 import { runtimeFailureDetails, runtimeIdentity, checkRepairLock } from "./runtime-preflight.js";
@@ -38,10 +38,10 @@ export async function runEntry({
       throw error;
     }
     let options;
-    try { options = parseCliArguments(argv); }
+    try { const { parseCliArguments } = await import("./arguments.js"); options = parseCliArguments(argv); }
     catch (error) {
       if (mcp) throw new McpDiagnosticError("CONFIG_INVALID", "argument_parse");
-      if (invocation.json) console.error(JSON.stringify(formatCliErrorPayload(error), null, 2));
+      if (invocation.json) console.error(JSON.stringify(formatCliErrorPayload(error, false, true), null, 2));
       else console.error(`错误：${error.message}`);
       processImpl.exitCode = 1;
       return;

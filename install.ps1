@@ -14,12 +14,30 @@ function Resolve-NativeCommand([string[]] $Names, [string] $MissingMessage) {
   Stop-Install $MissingMessage
 }
 
+function Invoke-NativeSafely([string] $Command, [string[]] $Arguments) {
+  $previous = $ErrorActionPreference
+  $previousNative = $PSNativeCommandUseErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $PSNativeCommandUseErrorActionPreference = $false
+    $output = @(& $Command @Arguments 2>&1)
+    $code = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previous
+    $PSNativeCommandUseErrorActionPreference = $previousNative
+  }
+  return @{ Output = $output; ExitCode = $code }
+}
+
 function Invoke-NativeVersion([string] $Command, [string[]] $Arguments, [string] $FailureMessage) {
-  $output = @(& $Command @Arguments)
-  $exitCode = $LASTEXITCODE
+  $result = Invoke-NativeSafely $Command $Arguments
+  $output = @($result.Output)
+  $exitCode = $result.ExitCode
   if ($null -eq $exitCode -or $exitCode -ne 0) {
     Stop-Install $FailureMessage
   }
+  $versionLines = @($output | ForEach-Object { "$_".Trim() } | Where-Object { $_ -match '^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$' })
+  if ($versionLines.Count -gt 0) { return $versionLines[-1] }
   return (($output | Out-String).Trim())
 }
 
@@ -50,15 +68,9 @@ function Assert-MinimumVersion(
 function Install-ShiliuPackage([string] $NpmCommand) {
   # Windows PowerShell 5.1 can treat redirected native stderr as an error.
   # Capture npm output and decide success from the native exit code.
-  $previousErrorActionPreference = $ErrorActionPreference
-  $exitCode = $null
-  try {
-    $ErrorActionPreference = 'Continue'
-    $output = @(& $NpmCommand install --global '@bigbrain-work/mcp-connect@latest' --prefer-online 2>&1)
-    $exitCode = $LASTEXITCODE
-  } finally {
-    $ErrorActionPreference = $previousErrorActionPreference
-  }
+  $result = Invoke-NativeSafely $NpmCommand @('install', '--global', '@bigbrain-work/mcp-connect@latest', '--prefer-online')
+  $exitCode = $result.ExitCode
+  $output = @($result.Output)
   if ($null -eq $exitCode) {
     Stop-Install 'npm did not return an exit code. Check that npm can run in this terminal.'
   }
@@ -101,8 +113,9 @@ if (-not [int]::TryParse($npmVersion.Split('.')[0], [ref] $npmMajor)) {
 }
 if ($npmMajor -lt 8) {
   Write-Host "npm $npmVersion is too old; upgrading npm to the supported compatibility release..."
-  & $npmCommand install --global 'npm@9.9.4'
-  $npmUpgradeExitCode = $LASTEXITCODE
+  $upgrade = Invoke-NativeSafely $npmCommand @('install', '--global', 'npm@9.9.4')
+  $upgrade.Output | ForEach-Object { Write-Host $_ }
+  $npmUpgradeExitCode = $upgrade.ExitCode
   if ($null -eq $npmUpgradeExitCode -or $npmUpgradeExitCode -ne 0) {
     Stop-Install 'npm compatibility upgrade returned a non-zero exit code.'
   }
@@ -133,8 +146,9 @@ $shiliuVersion = Invoke-NativeVersion $shiliuCommand @('--version') 'shiliu --ve
 Assert-MinimumVersion $shiliuVersion '1.3.12' 'Shiliu AI CLI'
 
 Write-Host 'Verifying the actual npx MCP launch (initialize + tools/list)...'
-& $shiliuCommand doctor --transport stdio --standard-only --prepare --json
-if ($LASTEXITCODE -ne 0) {
+$doctor = Invoke-NativeSafely $shiliuCommand @('doctor', '--transport', 'stdio', '--standard-only', '--prepare', '--json')
+$doctor.Output | ForEach-Object { Write-Host $_ }
+if ($null -eq $doctor.ExitCode -or $doctor.ExitCode -ne 0) {
   throw 'CLI launch verification failed. Check the diagnostic error and repair the identified Shiliu npx entry before reconnecting. Do not clear credentials.'
 }
 Write-Host "CLI installed. Version: $shiliuVersion"

@@ -30,6 +30,22 @@ require_minimum_version() {
   fi
 }
 
+npm_global_install() {
+  npm_log=$(mktemp) || fail "Unable to create an installation log."
+  if npm install --global "$@" >"$npm_log" 2>&1; then
+    cat "$npm_log"
+    rm -f "$npm_log"
+  else
+    cat "$npm_log" >&2
+    if grep -q EACCES "$npm_log"; then
+      printf '%s\n' 'Permission denied. Set a user-owned npm prefix: npm config set prefix "$HOME/.local"' 'Add "$HOME/.local/bin" to PATH in your shell profile, open a new terminal, and rerun the installer.' >&2
+    fi
+    rm -f "$npm_log"
+    fail "npm installation returned a non-zero exit code."
+  fi
+}
+
+main() {
 command -v node >/dev/null 2>&1 || fail "Node.js 18.14.1 or newer is required for the CLI."
 command -v npm >/dev/null 2>&1 || fail "npm was not found. Install Node.js 24 LTS from https://nodejs.org/en/download (the official installer includes npm), reopen the terminal, and rerun this command."
 
@@ -43,7 +59,7 @@ case "$npm_major" in
 esac
 if [ "$npm_major" -lt 8 ]; then
   printf '%s\n' "npm $npm_version is too old; upgrading npm to the supported compatibility release..."
-  npm install --global npm@9.9.4 || fail "npm compatibility upgrade returned a non-zero exit code."
+  npm_global_install npm@9.9.4
   npm_version=$(npm --version) || fail "Unable to read the npm version after upgrade."
   npm_major=${npm_version%%.*}
   case "$npm_major" in
@@ -53,7 +69,7 @@ if [ "$npm_major" -lt 8 ]; then
 fi
 
 printf '%s\n' "Installing @bigbrain-work/mcp-connect..."
-npm install --global @bigbrain-work/mcp-connect@latest --prefer-online || fail "npm installation returned a non-zero exit code."
+npm_global_install @bigbrain-work/mcp-connect@latest --prefer-online
 
 command -v shiliu >/dev/null 2>&1 || fail "The shiliu command is not on PATH. Open a new terminal and retry."
 shiliu_version=$(shiliu --version) || fail "shiliu --version returned a non-zero exit code. CLI installation could not be verified."
@@ -65,3 +81,6 @@ printf '%s\n' "CLI installed. Version: $shiliu_version"
 printf '%s\n' "Verified only this terminal runtime. If the Agent bundles another Node/npm, verify its launch configuration with doctor --launch-file and --node-path before enabling MCP."
 printf '%s\n' "Continue with Step 3 (Install Skill) in https://bigbrain.work/shiliuAI/install.txt"
 printf '%s\n' "This completes only the CLI installation; follow the guide for authorization, Agent configuration, and verification."
+}
+
+main "$@"
