@@ -455,6 +455,7 @@ export async function pollPendingDeviceLogin({
     // An exchanged device code is consumed, even if validation or persistence fails.
     await clearPendingLogin(pendingLoginStore, pending);
   }
+  if (remote.credentialPersisted === false) throw new Error(`登录令牌已兑换，但凭据尚未保存成功。${remote.warning}`);
   const result = {
     status: "success",
     message: remote.warning || "登录成功",
@@ -508,6 +509,7 @@ async function deviceLogin({
     tokenStore,
     url,
   });
+  if (remote.credentialPersisted === false) throw new Error(`登录令牌已兑换，但凭据尚未保存成功。${remote.warning}`);
   console.log(`登录成功：${remote.detail}；${remote.warning || "短期访问令牌已保存到系统凭据库。"}`);
 }
 
