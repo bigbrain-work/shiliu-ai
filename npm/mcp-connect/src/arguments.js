@@ -15,12 +15,7 @@ const COMMANDS = new Set([
   "update",
 ]);
 
-export function parseCliArguments(args) {
-  const parsed = parseArgs({
-    args,
-    allowPositionals: true,
-    strict: true,
-    options: {
+const CLI_OPTIONS = {
       "launch-file": { type: "string" },
       "node-path": { type: "string" },
       "npm-cli": { type: "string" },
@@ -104,7 +99,47 @@ export function parseCliArguments(args) {
         short: "v",
         default: false,
       },
-    },
+};
+
+// Use the same option definitions as strict parsing, even when an invalid argument
+// prevents parsing. Option values must never select MCP mode or JSON output.
+export function inspectCliInvocation(args) {
+  let command;
+  let json = false;
+  let positionalOnly = false;
+  const shorts = Object.fromEntries(Object.entries(CLI_OPTIONS)
+    .filter(([, option]) => option.short)
+    .map(([, option]) => [option.short, option]));
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (!positionalOnly && argument === "--") {
+      positionalOnly = true;
+    } else if (!positionalOnly && argument.startsWith("--")) {
+      const name = argument.slice(2).split("=", 1)[0];
+      if (name === "json") json = true;
+      if (CLI_OPTIONS[name]?.type === "string" && !argument.includes("=") &&
+          args[index + 1] !== undefined && !args[index + 1].startsWith("-")) index += 1;
+    } else if (!positionalOnly && argument.startsWith("-") && argument !== "-") {
+      for (const [offset, short] of [...argument.slice(1)].entries()) {
+        if (shorts[short]?.type === "string") {
+          if (offset === argument.length - 2 && args[index + 1] !== undefined &&
+              !args[index + 1].startsWith("-")) index += 1;
+          break;
+        }
+      }
+    } else if (command === undefined) {
+      command = argument;
+    }
+  }
+  return { command: command || "install", json };
+}
+
+export function parseCliArguments(args) {
+  const parsed = parseArgs({
+    args,
+    allowPositionals: true,
+    strict: true,
+    options: CLI_OPTIONS,
   });
 
   const command = parsed.positionals[0] || "install";
