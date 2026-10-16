@@ -29,16 +29,16 @@ test("parallel login starts share one cross-process-locked pending session", asy
   } finally { console.log = log; await rm(root, { recursive: true, force: true }); }
 });
 
-for (const failure of ["validation", "save"]) test(`consumed device code is cleared after ${failure} fails`, async () => {
+for (const failure of ["validation", "save", "timeout"]) test(`consumed device code is cleared after ${failure} fails`, async () => {
   let pending = { sessionId: "ABCD-2345", deviceCode: "secret", expiresAt: Date.now() + 10000, interval: 1, authUrl: "http://127.0.0.1/auth/device", allowLocalhost: true };
   let revokes = 0;
   await assert.rejects(pollPendingDeviceLogin({ session: "ABCD-2345", json: true,
-    tokenStore: { save: async () => { throw new Error("save failed"); } },
+    tokenStore: { save: async () => { if (failure === "timeout") return { persisted: false, warning: "memory only" }; throw new Error("save failed"); } },
     pendingLoginStore: { load: async () => pending, clear: async () => { pending = null; } },
     clientFactory: () => ({ exchange: async () => ({ access_token: "new", refresh_token: "new", expires_in: 3600 }), revoke: async () => { revokes++; } }),
     probe: async () => ({ ok: failure !== "validation", detail: "validation failed" }),
   }));
-  assert.equal(pending, null); assert.equal(revokes, 1);
+  assert.equal(pending, null); assert.equal(revokes, failure === "timeout" ? 0 : 1);
 });
 
 test("memory-only rotated token can rotate again without reusing the spent token", async () => {
