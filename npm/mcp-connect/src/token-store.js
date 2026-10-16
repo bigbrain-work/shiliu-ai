@@ -9,6 +9,11 @@ import { fileURLToPath } from "node:url";
 const KEYRING_WORKER_PATH = fileURLToPath(
   new URL("./keyring-worker.js", import.meta.url),
 );
+const MISSING_ENTRY_PATTERN = /not found|no entry|no matching|credential.*missing/iu;
+
+function workerError(code, message) {
+  return Object.assign(new Error(message), { code });
+}
 
 function validateTokenSet(value) {
   if (
@@ -23,35 +28,91 @@ function validateTokenSet(value) {
   return value;
 }
 
-export function runKeyringWorker(request, { spawnImpl = spawn } = {}) {
+export function runKeyringWorker(
+  request,
+  { spawnImpl = spawn, timeoutMs = 10000, killGraceMs = 1000 } = {},
+) {
   return new Promise((resolve, reject) => {
-    const child = spawnImpl(process.execPath, [KEYRING_WORKER_PATH], {
-      windowsHide: true,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 ||
+        !Number.isFinite(killGraceMs) || killGraceMs < 0) {
+      reject(new TypeError("凭据库等待时间必须是有效的正数"));
+      return;
+    }
+    let child;
+    let input;
+    try {
+      input = JSON.stringify(request);
+      child = spawnImpl(process.execPath, [KEYRING_WORKER_PATH], {
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch {
+      reject(workerError("KEYRING_WORKER_FAILED", "无法启动系统凭据库子进程"));
+      return;
+    }
     let stdout = "";
     let stderr = "";
-    child.stdout.setEncoding("utf8");
-    child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => {
+    let settled = false;
+    let stopping;
+    let timer;
+    let killTimer;
+    const closeInput = () => {
+      try { child.stdin?.destroy?.(); } catch { /* Cleanup cannot prevent settlement. */ }
+    };
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      closeInput();
+      if (error) reject(error);
+      else resolve(value);
+    };
+    const stop = (error) => {
+      if (settled || stopping) return;
+      stopping = error;
+      clearTimeout(timer);
+      closeInput();
+      if (!child.pid) { finish(error); return; }
+      // This is the exact worker we spawned, never a shell or process tree.
+      // Wait for close before releasing a caller's refresh lock when possible.
+      try { child.kill("SIGKILL"); } catch { /* The deadline remains bounded. */ }
+      if (!settled) killTimer = setTimeout(() => finish(error), killGraceMs);
+    };
+    const ioFailure = () => stop(workerError("KEYRING_WORKER_FAILED", "系统凭据库子进程通信失败"));
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      if (settled || stopping) return;
       stdout += chunk;
     });
-    child.stderr.on("data", (chunk) => {
+    child.stderr?.on("data", (chunk) => {
+      if (settled || stopping) return;
       stderr += chunk;
     });
-    child.on("error", reject);
+    // Keep guarded error listeners attached: late error/close events are benign.
+    child.on("error", ioFailure);
+    child.stdin?.on?.("error", ioFailure);
+    child.stdout?.on("error", ioFailure);
+    child.stderr?.on("error", ioFailure);
     child.on("close", (code) => {
+      if (settled) return;
+      if (stopping) { finish(stopping); return; }
       if (code !== 0) {
-        reject(new Error(stderr.trim() || `凭据库子进程返回退出码 ${code}`));
+        // Preserve missing-entry semantics without serializing worker output.
+        finish(MISSING_ENTRY_PATTERN.test(stderr)
+          ? workerError("KEYRING_ENTRY_MISSING", "系统凭据库中未找到条目")
+          : workerError("KEYRING_WORKER_FAILED", `凭据库子进程返回退出码 ${code}`));
         return;
       }
       try {
-        resolve(JSON.parse(stdout));
+        finish(undefined, JSON.parse(stdout));
       } catch {
-        reject(new Error("凭据库子进程返回了无效响应"));
+        finish(workerError("KEYRING_RESPONSE_INVALID", "凭据库子进程返回了无效响应"));
       }
     });
-    child.stdin.end(JSON.stringify(request));
+    timer = setTimeout(() => stop(workerError("KEYRING_TIMEOUT", "本机系统凭据库请求超时，请稍后重试")), timeoutMs);
+    try { child.stdin.end(input); } catch { ioFailure(); }
   });
 }
 
@@ -140,9 +201,8 @@ export class TokenStore {
   }
 
   isMissingEntry(error) {
-    return /not found|no entry|no matching|credential.*missing/iu.test(
-      error?.message || "",
-    );
+    return error?.code === "KEYRING_ENTRY_MISSING" ||
+      MISSING_ENTRY_PATTERN.test(error?.message || "");
   }
 }
 
