@@ -34,7 +34,7 @@
 
 Claude Code 2.1.201 在新的测试项目中以原生 Skill 工具加载官网 Skill，正式 CLI 显式安装并登记目标，原生 MCP 免费余额调用成功且 `charged=false`、`consumed_credits=0`。实际客户端发出的 tools/list 响应含 31 项，证据来自仅透传字节的观察器，不由模型猜测工具数量。另一个未登记 Git 项目的普通任务自动执行一次 refresh，静默跳过，24 个文件摘要不变，无安装尝试、无 --force、无用户提醒。两次余额调用均免费，没有调用收费业务工具。
 
-原生 shiliu_login 已创建并展示私有二维码，原生 shiliu_login_poll 正常轮询；本人微信扫码尚未完成，不记为扫码成功。
+原生 shiliu_login 创建二维码、原生 shiliu_login_poll 兑换成功并保存凭据，扫码流程通过。
 
 本机通过当次 HTTPS 下载、与 main SHA256 一致的官方安装器，将全局 shiliu 从 1.3.9 升为 1.3.18，并完成 doctor initialize/tools/list 验证。原目录中误生成的 --help 目录确认没有文件或链接后，仅删除空目录树；没有改动后端原目录 123 个文件。
 
