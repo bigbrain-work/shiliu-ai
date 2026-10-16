@@ -75,7 +75,7 @@ test("creates and removes a temporary PNG QR code for Agent display", async () =
   }
 });
 
-test("creating a new QR image removes every previous Shiliu login image", async () => {
+test("new QR images use separate private directories and never erase another session", async () => {
   const temporaryDirectory = await mkdtemp(
     path.join(os.tmpdir(), "shiliu-qr-replace-test-"),
   );
@@ -91,7 +91,8 @@ test("creating a new QR image removes every previous Shiliu login image", async 
       { temporaryDirectory },
     );
 
-    await assert.rejects(() => stat(first), /ENOENT/u);
+    assert.notEqual(path.dirname(first), path.dirname(second));
+    assert.equal((await stat(first)).isFile(), true);
     assert.equal((await stat(second)).isFile(), true);
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });

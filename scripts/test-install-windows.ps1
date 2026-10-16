@@ -104,6 +104,17 @@ echo %*>>"%SHILIU_INSTALL_TEST_LOG%"
 exit /b 0
 '@
 
+$npmVersionWarning = @'
+@echo off
+if "%~1"=="--version" (
+  echo warning from npm 1>&2
+  echo 11.5.1
+  exit /b 0
+)
+echo %*>>"%SHILIU_INSTALL_TEST_LOG%"
+exit /b 0
+'@
+
 $npmOldThenUpgraded = @'
 @echo off
 if "%~1"=="--version" (
@@ -227,6 +238,8 @@ try {
   Assert-True ($installAttempts -eq 2) 'EBUSY must trigger exactly one installation retry.'
   Assert-True ($busyNpm.Output -match 'Retrying the Shiliu AI CLI installation once') 'EBUSY retry must be visible to the user.'
 
+  $versionWarning = Invoke-InstallerCase 'version-warning' $node22 $npmVersionWarning $shiliuSuccess
+  Assert-True ($versionWarning.ExitCode -eq 0) "Version stderr warning must not abort installation: $($versionWarning.Output)"
   $warningNpm = Invoke-InstallerCase 'eperm-warning' $node22 $npmEpermWarningOnce $shiliuSuccess
   Assert-True ($warningNpm.ExitCode -eq 0) "EPERM warning retry path failed: $($warningNpm.Output)"
   $warningNpmLog = Get-Content -LiteralPath $warningNpm.LogPath -Raw

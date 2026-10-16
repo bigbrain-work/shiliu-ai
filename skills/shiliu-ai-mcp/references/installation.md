@@ -38,3 +38,7 @@ For an explicitly requested CLI version check, `shiliu update` checks npm withou
 On Windows, the PowerShell installer retries a failed package installation once for EBUSY/EPERM, stopping only identifiable Shiliu MCP Node processes. If it still fails, report the lock or permission error and ask the user to close affected MCP clients before another attempt. After a successful upgrade, reconnect affected clients and verify their connection.
 
 If Codex reports an existing configuration error, address the reported field and line while preserving unrelated settings, then retry configuration. Do not replace the entire Agent configuration to fix a Shiliu connection.
+
+Connection recovery: https://bigbrain.work/shiliuAI/recovery.txt (public; no working MCP or installed Skill required).
+
+Credential storage: Linux requires an available Secret Service session. SSH, Docker, or WSL without Secret Service is not supported for QR login; credentials do not fall back to plaintext files.

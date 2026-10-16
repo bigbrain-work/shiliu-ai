@@ -1,16 +1,17 @@
 // Keep argument error formatting available before loading optional CLI dependencies.
-function isNetworkError(error) {
-  return (
-    ["AbortError", "TimeoutError"].includes(error?.name) ||
-    /fetch failed|network|timed? out|ECONN|ENOTFOUND|EAI_AGAIN/iu.test(
-      `${error?.message || ""} ${error?.cause?.code || ""}`,
-    )
-  );
+export function isNetworkError(error) {
+  const seen = new Set();
+  for (let depth = 0; error && depth < 8 && !seen.has(error); depth++, error = error.cause) {
+    seen.add(error);
+    if (["AbortError", "TimeoutError", "NetworkError"].includes(error.name) ||
+        /^(?:ECONNRESET|ECONNREFUSED|ECONNABORTED|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|UND_ERR_(?:CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT|SOCKET))$/u.test(error.code || "")) return true;
+  }
+  return false;
 }
 
-export function formatCliErrorPayload(error, deviceAuth = false) {
+export function formatCliErrorPayload(error, deviceAuth = false, argumentError = false) {
   const code =
-    deviceAuth
+    argumentError ? "command_failed" : deviceAuth
       ? error.code
       : isNetworkError(error)
         ? "network_error"

@@ -41,7 +41,7 @@ export async function launchContext(options = {}, env = process.env) {
   } else {
     const npm = resolveExecutable("npm", { env: environment });
     const directories = [path.dirname(node), npm && path.dirname(npm)].filter(Boolean);
-    npmCli = directories.map((directory) => path.join(directory, "node_modules/npm/bin/npm-cli.js")).find(existsSync);
+    npmCli = directories.flatMap((directory) => [path.join(directory, "node_modules/npm/bin/npm-cli.js"), path.resolve(directory, "../lib/node_modules/npm/bin/npm-cli.js")]).find(existsSync);
     if (!npmCli && npm) {
       const resolved = await realpath(npm).catch(() => "");
       if (resolved.endsWith("npm-cli.js")) npmCli = resolved;
@@ -60,16 +60,23 @@ export async function launchContext(options = {}, env = process.env) {
     if (Object.keys(server.env || {}).length || server.url || server.headers || !isShiliuDefinition(server)) throw invalid();
     definition = { command: server.command, args: server.args };
   } else if (options.nodePath || options.npmCli) {
-    if (!npmCli) throw invalid();
-    definition = { command: node, args: [npmCli, "exec", "--yes", "--", PACKAGE_NAME, "mcp"] };
+    definition = npmCli ? { command: node, args: [npmCli, "exec", "--yes", "--", PACKAGE_NAME, "mcp"] }
+      : process.platform === "win32" ? { command: "cmd", args: ["/d", "/s", "/c", "npx", "-y", PACKAGE_NAME, "mcp"] }
+      : { command: "npx", args: ["-y", PACKAGE_NAME, "mcp"] };
   }
   return { env: environment, node, npmCli, definition,
     scope: options.nodePath || options.npmCli || options.npmCache || options.launchFile ? "specified_launch_context" : "current_terminal" };
 }
 
-export function runNpm(context, args, timeout = 120000) {
-  if (!context.npmCli) throw invalid();
-  const result = spawnSync(context.node, [context.npmCli, ...args], {
+export function runNpm(context, args, timeout = 120000, { spawnImpl = spawnSync } = {}) {
+  const fallback = !context.npmCli && args[0] === "exec";
+  if (!context.npmCli && !fallback) throw invalid();
+  const pos = args.indexOf("--");
+  const npxArgs = ["--yes", "--prefer-online", ...args.slice(pos + 1)];
+  const windows = process.platform === "win32";
+  const command = fallback ? (windows ? (process.env.ComSpec || "cmd.exe") : "npx") : context.node;
+  const invokeArgs = fallback ? (windows ? ["/d", "/s", "/c", "npx", ...npxArgs] : npxArgs) : [context.npmCli, ...args];
+  const result = spawnImpl(command, invokeArgs, {
     env: context.env, encoding: "utf8", windowsHide: true, shell: false, timeout,
     maxBuffer: 1024 * 1024,
   });

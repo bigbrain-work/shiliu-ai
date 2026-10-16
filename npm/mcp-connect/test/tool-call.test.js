@@ -144,6 +144,7 @@ test("removes the temporary file when finalizing an output fails", async () => {
   try {
     await assert.rejects(
       writeResultFile(output, { ok: true }, {
+        force: true,
         move: async () => {
           throw new Error("simulated rename failure");
         },

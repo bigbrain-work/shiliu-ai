@@ -3,6 +3,7 @@ import { constants as fsConstants } from "node:fs";
 import {
   access,
   mkdir,
+  link,
   readFile,
   rename,
   rm,
@@ -185,10 +186,8 @@ export async function writeResultFile(
   );
   try {
     await write(temporaryPath, bytes, { flag: "wx", mode: 0o600 });
-    if (force && (await targetExists(absolutePath))) {
-      await remove(absolutePath, { force: true });
-    }
-    await move(temporaryPath, absolutePath);
+    if (force) await move(temporaryPath, absolutePath);
+    else { await link(temporaryPath, absolutePath); await remove(temporaryPath, { force: true }); }
   } catch (error) {
     await remove(temporaryPath, { force: true }).catch(() => {});
     throw error;
@@ -217,7 +216,7 @@ export async function runToolCall({
   connectRecovering = connectRecoveringRemote,
   signal, requestOptions = {}, processImpl = process,
 } = {}) {
-  const preparedOutputPath = await preflightOutputPath(outputPath, { force });
+  const preparedOutputPath = dryRun ? null : await preflightOutputPath(outputPath, { force });
   const context = createRequestContext({ ...requestOptions, signal });
   processImpl.once("SIGINT", context.abort);
   let remote;
@@ -226,7 +225,7 @@ export async function runToolCall({
       url,
       connectRemote: connect,
       resolveAuthorization: async () =>
-        resolveAuth({ home, platform, env, authUrl, tokenStore }),
+        resolveAuth({ home, platform, env, authUrl, tokenStore, readOnly: dryRun }),
       requestOptions: { ...requestOptions, signal: context.signal, deadline: context.deadline },
     }).then(async (connection) => {
       if (context.signal.aborted) { await connection.close(); throw cancelledRequest(); }

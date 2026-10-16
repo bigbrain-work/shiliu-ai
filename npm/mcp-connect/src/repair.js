@@ -5,7 +5,7 @@ import { lstat, mkdir, open, readFile, realpath, rename, unlink } from "node:fs/
 import { PACKAGE_NAME } from "./constants.js";
 import { launchContext, runNpm } from "./launch-context.js";
 import { verifyStdioLaunch } from "./stdio-probe.js";
-import { inspectRepairLock } from "./repair-lock-state.js";
+import { inspectRepairLock, processStartIdentity } from "./repair-lock-state.js";
 
 class RepairError extends Error {
   constructor(reason, exitCode = 2) { super(reason); this.reason = reason; this.exitCode = exitCode; }
@@ -143,7 +143,7 @@ export async function repairInstallation(options, {
     try { lock = await open(lockPath, "wx", 0o600); ownedLock = true; }
     catch (error) { if (error.code === "EEXIST") throw new RepairError("REPAIR_ALREADY_RUNNING", 3); throw error; }
     probeId = randomUUID();
-    await lock.writeFile(JSON.stringify({ pid: process.pid, entry: target.entry, probe_id: probeId }));
+    await lock.writeFile(JSON.stringify({ pid: process.pid, process_start: await processStartIdentity(process.pid), created_at: Date.now(), entry: target.entry, probe_id: probeId }));
     context.env.SHILIU_REPAIR_PROBE_ID = probeId;
     progress("process_check");
     await activeCheck(target.entry);

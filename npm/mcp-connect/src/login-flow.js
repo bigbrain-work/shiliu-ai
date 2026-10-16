@@ -23,7 +23,8 @@ export async function verifyAndPersistLogin({
     throw validationError;
   }
   try {
-    await tokenStore.save(tokenSet);
+    const saved = await tokenStore.save(tokenSet);
+    if (saved?.persisted === false) return { ...remote, credentialPersisted: false, warning: saved.warning };
   } catch (error) {
     try {
       await client.revoke(tokenSet.refreshToken);

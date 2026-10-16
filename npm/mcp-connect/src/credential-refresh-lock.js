@@ -6,13 +6,13 @@ import lockfile from "proper-lockfile";
 // The default lock follows the OS credential store's user, not a project or npm extraction.
 export async function withCredentialRefreshLock(
   operation,
-  { home = os.homedir(), stale = 120000, update = 5000, retries = 300 } = {},
+  { home = os.homedir(), stale = 120000, update = 5000, retries = 300, name = "credential-refresh" } = {},
 ) {
   const directory = path.join(home, ".shiliu-ai");
   await mkdir(directory, { recursive: true, mode: 0o700 });
   let compromised;
   const release = await lockfile.lock(
-    path.join(directory, "credential-refresh"),
+    path.join(directory, name),
     {
       realpath: false,
       stale,

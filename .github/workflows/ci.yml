@@ -16,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           cache-dependency-path: npm/mcp-connect/package-lock.json
 
@@ -27,7 +27,7 @@ jobs:
         run: npm test --prefix npm/mcp-connect
 
       - name: Test public distribution integrity
-        run: node --test scripts/public-skill-integrity.test.mjs
+        run: node --test scripts/public-skill-integrity.test.mjs scripts/p3-installer-build.test.mjs
 
       - name: Verify package contents
         run: npm run pack:check --prefix npm/mcp-connect
@@ -85,7 +85,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: npm
           cache-dependency-path: npm/mcp-connect/package-lock.json
 
@@ -113,7 +113,7 @@ jobs:
         run: npm test --prefix npm/mcp-connect
 
       - name: Test public distribution integrity on Windows
-        run: node --test scripts/public-skill-integrity.test.mjs
+        run: node --test scripts/public-skill-integrity.test.mjs scripts/p3-installer-build.test.mjs
 
       - name: Verify package contents
         run: npm run pack:check --prefix npm/mcp-connect

@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
+import TOML from "@iarna/toml";
 
 import { AUTH_URL, MCP_URL, PACKAGE_NAME, SERVER_NAME } from "./constants.js";
 import { resolveAuthorization } from "./authorization.js";
@@ -14,17 +16,21 @@ async function readText(filePath) {
   }
 }
 
-async function hasServerConfig(filePath) {
+async function hasServerConfig(filePath, toml = false) {
   const content = await readText(filePath);
-  return (
-    content.includes(SERVER_NAME) &&
-    (content.includes(MCP_URL) || content.includes(PACKAGE_NAME))
-  );
+  if (!content.trim()) return false;
+  try {
+    const parsed = toml ? TOML.parse(content) : JSON.parse(content);
+    const server = (toml ? parsed.mcp_servers : parsed.mcpServers)?.[SERVER_NAME];
+    return Boolean(server && (server.url === MCP_URL ||
+      (typeof server.command === "string" && Array.isArray(server.args) &&
+        server.args.some(arg => arg === PACKAGE_NAME || arg.startsWith(`${PACKAGE_NAME}@`)))));
+  } catch { return false; }
 }
 
-export async function inspectLocalConfiguration(home) {
+export async function inspectLocalConfiguration(home = os.homedir(), env = process.env) {
   return {
-    codex: await hasServerConfig(path.join(home, ".codex", "config.toml")),
+    codex: await hasServerConfig(path.join(env.CODEX_HOME || path.join(home, ".codex"), "config.toml"), true),
     claude: await hasServerConfig(path.join(home, ".claude.json")),
     cursor: await hasServerConfig(path.join(home, ".cursor", "mcp.json")),
   };
@@ -73,15 +79,23 @@ export async function getStatus({
   authUrl = AUTH_URL,
   readCatalog,
   resolveAuth = resolveAuthorization,
+  dryRun = false,
 } = {}) {
-  const authorization = await resolveAuth({ home, platform, env, authUrl });
-  const configs = await inspectLocalConfiguration(home);
+  let authorization;
+  try { authorization = await resolveAuth({ home, platform, env, authUrl, readOnly: dryRun }); }
+  catch (error) {
+    if (error.code !== "invalid_grant") throw error;
+    authorization = { token: "", source: "device", loginRequired: true };
+  }
+  const configs = await inspectLocalConfiguration(home, env);
   const remote = await probeMcp(authorization.token, { url, readCatalog });
+  if (authorization.loginRequired) remote.detail = "登录凭据已失效，需要重新登录：shiliu login";
   return {
     credential: Boolean(authorization.token),
     credentialSource: authorization.source,
     credentialExpiresAt: authorization.expiresAt ?? null,
     credentialRefreshed: Boolean(authorization.refreshed),
+    ...(authorization.loginRequired ? { loginRequired: true } : {}),
     configs,
     remote,
   };
@@ -97,6 +111,7 @@ export async function printStatus(options = {}) {
           credentialSource: result.credentialSource,
           credentialExpiresAt: result.credentialExpiresAt,
           credentialRefreshed: result.credentialRefreshed,
+          ...(result.loginRequired ? { loginRequired: true } : {}),
           configs: result.configs,
           remote: {
             ok: result.remote.ok,
@@ -149,8 +164,9 @@ export async function printTools({
   json = false,
   readCatalog = readToolCatalog,
   resolveAuth = resolveAuthorization,
+  dryRun = false,
 } = {}) {
-  const authorization = await resolveAuth({ home, platform, env, authUrl });
+  const authorization = await resolveAuth({ home, platform, env, authUrl, readOnly: dryRun });
   if (!authorization.token) throw new Error("尚未登录，请先运行 shiliu login");
   const tools = await readCatalog({ token: authorization.token, url });
 

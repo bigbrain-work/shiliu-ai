@@ -9,6 +9,8 @@ import {
   realpath,
 } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
+import lockfile from "proper-lockfile";
 import { installSkillArchive } from "./direct-skill-install.js";
 import {
   SHILIU_SKILL_NAME,
@@ -20,7 +22,7 @@ import {
 } from "./skill-targets.js";
 export { SHILIU_SKILL_NAME } from "./skill-targets.js";
 export const SKILL_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
-export const SHILIU_SKILL_SOURCE = "https://bigbrain.work/shiliuAI";
+export const SHILIU_SKILL_SOURCE = "https://www.bigbrain.work/shiliuai";
 const STALE_LOCK_MS = 15 * 60 * 1000;
 
 function stateFile(home) {
@@ -31,39 +33,46 @@ function lockFile(home) {
   return path.join(home, ".shiliu-ai", "skill-refresh.lock");
 }
 
-async function acquireLock(home, retried = false) {
+async function acquireLock(home) {
   await mkdir(path.dirname(lockFile(home)), { recursive: true });
+  let releaseGuard;
+  let compromised;
+  try {
+    releaseGuard = await lockfile.lock(lockFile(home), { realpath: false, lockfilePath: `${lockFile(home)}.guard`, stale: STALE_LOCK_MS, update: 10000, retries: 0,
+      onCompromised: error => { compromised = error; } });
+  } catch (error) { if (error.code === "ELOCKED") return null; throw error; }
+  const owner = `${process.pid}\n${randomUUID()}\n`;
   let handle;
   try {
-    handle = await open(lockFile(home), "wx", 0o600);
-    await handle.writeFile(`${process.pid}\n`, "utf8");
+    try { handle = await open(lockFile(home), "wx", 0o600); }
+    catch (error) {
+      if (error.code !== "EEXIST") throw error;
+      const previous = await readFile(lockFile(home), "utf8");
+      const metadata = await stat(lockFile(home));
+      if (Date.now() - metadata.mtimeMs < STALE_LOCK_MS) { await releaseGuard(); return null; }
+      try { process.kill(Number(previous.split("\n")[0]), 0); await releaseGuard(); return null; }
+      catch (failure) { if (failure.code !== "ESRCH") { await releaseGuard(); return null; } }
+      if (await readFile(lockFile(home), "utf8") !== previous) { await releaseGuard(); return null; }
+      await unlink(lockFile(home));
+      handle = await open(lockFile(home), "wx", 0o600);
+    }
+    await handle.writeFile(owner, "utf8");
   } catch (error) {
     await handle?.close();
-    if (error.code === "EEXIST") {
-      if (!retried) {
-        try {
-          const lockStat = await stat(lockFile(home));
-          if (Date.now() - lockStat.mtimeMs >= STALE_LOCK_MS) {
-            await unlink(lockFile(home));
-            return acquireLock(home, true);
-          }
-        } catch (lockError) {
-          if (lockError.code === "ENOENT") return acquireLock(home, true);
-          throw lockError;
-        }
-      }
-      return null;
-    }
+    await releaseGuard();
+    if (error.code === "EEXIST") return null;
     throw error;
   }
   await handle.close();
-  return async () => {
+  const release = async () => {
     try {
-      await unlink(lockFile(home));
+      if (await readFile(lockFile(home), "utf8") === owner) await unlink(lockFile(home));
     } catch (error) {
       if (error.code !== "ENOENT") throw error;
-    }
+    } finally { await releaseGuard().catch(error => { if (!compromised) throw error; }); }
   };
+  release.assertOwned = () => { if (compromised) throw new Error("Skill 操作锁已失效，停止写入并保留现有文件"); };
+  return release;
 }
 
 async function readState(home) {
@@ -154,6 +163,7 @@ export async function installShiliuSkill({
   if (!releaseLock)
     throw new Error("另一个石榴 Skill 操作正在进行，请稍后重试");
   try {
+    releaseLock.assertOwned();
     const installed = await directInstall({
       targetDirectory: parent,
       sourceBaseUrl: SHILIU_SKILL_SOURCE,
@@ -209,6 +219,7 @@ export async function installShiliuSkill({
       lastAttemptAt: installedAt,
       lastSuccessAt: installedAt,
     };
+    releaseLock.assertOwned();
     await writeState(home, state);
     return {
       status: "installed",
@@ -330,6 +341,7 @@ export async function refreshShiliuSkill({
   const releaseLock = await acquireLock(home);
   if (!releaseLock) return { status: "skipped", reason: "refresh_in_progress" };
   try {
+    releaseLock.assertOwned();
     const latest = await readState(home);
     const [key, current] = selectEntry(latest, home, cwd);
     if (!current)
@@ -355,10 +367,12 @@ export async function refreshShiliuSkill({
     }
     const attemptedAt = new Date(now).toISOString();
     current.lastAttemptAt = attemptedAt;
+    releaseLock.assertOwned();
     await writeState(home, latest);
     try {
       const updated = new Map();
       for (const target of inspection.targets) {
+        releaseLock.assertOwned();
         // Existing symlinked targets share one physical installation; do not replace their links.
         const storage = await realpath(target.installPath);
         if (path.basename(storage) !== SHILIU_SKILL_NAME)
@@ -381,6 +395,7 @@ export async function refreshShiliuSkill({
         target.digest = result.digest;
       }
       current.lastSuccessAt = attemptedAt;
+      releaseLock.assertOwned();
       await writeState(home, latest);
       return {
         status: "checked",

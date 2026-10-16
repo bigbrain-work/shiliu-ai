@@ -6,7 +6,7 @@ import { buildSkillDistribution } from "./build-skill-distribution.mjs";
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = path.resolve(path.dirname(scriptPath), "..");
-const installFiles = ["install.txt", "install.sh", "install.ps1"];
+const installFiles = ["install.txt", "install.sh", "install.ps1", "recovery.txt"];
 
 function assertSafeOutputDirectory(outputDirectory) {
   const resolved = path.resolve(outputDirectory);
@@ -35,7 +35,11 @@ export async function buildPublicSiteAssets(outputDirectory) {
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
   const outputDirectory = process.argv[2];
-  if (!outputDirectory) {
+  if (outputDirectory === "--help") {
+    console.log("Usage: node scripts/build-public-site-assets.mjs <output-directory>");
+    process.exit(0);
+  }
+  if (!outputDirectory || outputDirectory.startsWith("-") || process.argv.length !== 3) {
     throw new Error(
       "Usage: node scripts/build-public-site-assets.mjs <website-public-directory>",
     );

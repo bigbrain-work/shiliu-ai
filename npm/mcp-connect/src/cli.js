@@ -29,8 +29,10 @@ import {
   DeviceAuthError,
   createLoginQrCode,
   removeLoginQrCode,
+  readLoginQrCode,
   renderQrCode,
   waitForDeviceAuthorization,
+  exchangeWithNetworkRetry,
 } from "./device-auth-client.js";
 import { verifyAndPersistLogin } from "./login-flow.js";
 import { runProxy } from "./proxy.js";
@@ -46,6 +48,9 @@ import { printDoctor } from "./doctor.js";
 import { readToolArguments, runToolCall } from "./tool-call.js";
 import { printUpdateStatus } from "./updater.js";
 import { McpDiagnosticError } from "./mcp-diagnostics.js";
+import { withCredentialRefreshLock } from "./credential-refresh-lock.js";
+
+const withLoginLock = operation => withCredentialRefreshLock(operation, { name: "device-login" });
 
 function printHelp() {
   console.log(`${PACKAGE_NAME} ${PACKAGE_VERSION}
@@ -83,7 +88,7 @@ function printHelp() {
       --legacy-api-key 使用旧 API Key 兼容登录
       --no-wait       创建登录会话后立即返回
       --wait          等待指定登录会话完成
-      --force         强制刷新 Skill，或显式覆盖 call --out 文件
+      --force         强制刷新 Skill、显式覆盖 call --out，或 logout 仅清除本地凭据
       --transport <type> doctor 要验证的传输方式（当前仅 stdio）
       --standard-only doctor 只验收标准 npx 启动，不用备选安装掩盖失败
       --prepare       doctor 先按目标 Node/npm/cache 预热包，再开始握手计时
@@ -265,23 +270,30 @@ function printJson(value) {
   console.log(JSON.stringify(value, null, 2));
 }
 
-export async function startPendingDeviceLogin({
+export async function startPendingDeviceLogin(options) {
+  return (options.withLock || withLoginLock)(() => startPendingDeviceLoginLocked(options));
+}
+
+async function startPendingDeviceLoginLocked({
   authUrl,
   allowLocalhost,
   json,
   pendingLoginStore,
+  clientFactory = (baseUrl) => new DeviceAuthClient({ baseUrl }),
 }) {
   const existing = await pendingLoginStore.load();
   if (existing && existing.expiresAt > Date.now()) {
     let qrCodePath = existing.qrCodePath;
-    if (!(await fileExists(qrCodePath)) && existing.qrCodeValue) {
+    let validQr = await readLoginQrCode(qrCodePath).catch(() => null);
+    if (!validQr && existing.qrCodeValue) {
       qrCodePath = await createLoginQrCode(
         existing.qrCodeValue,
         existing.sessionId,
       );
       await pendingLoginStore.save({ ...existing, qrCodePath });
+      validQr = true;
     }
-    if (await fileExists(qrCodePath)) {
+    if (validQr) {
       const instructions = buildLoginInstructions(
         {
           user_code: existing.sessionId,
@@ -306,7 +318,7 @@ export async function startPendingDeviceLogin({
     await clearPendingLogin(pendingLoginStore, existing);
   }
 
-  const client = new DeviceAuthClient({ baseUrl: authUrl });
+  const client = clientFactory(authUrl);
   const start = await client.start();
   const sessionId = normalizeDeviceUserCode(start.user_code);
   const qrCodeValue =
@@ -341,13 +353,15 @@ async function clearPendingLogin(pendingLoginStore, pending) {
   await removeLoginQrCode(pending?.qrCodePath);
 }
 
-async function pollPendingDeviceLogin({
+export async function pollPendingDeviceLogin({
   session,
   wait,
   json,
   url,
   tokenStore,
   pendingLoginStore,
+  clientFactory = (baseUrl) => new DeviceAuthClient({ baseUrl }),
+  probe,
 }) {
   if (!session) throw new Error("login poll 需要 --session <id>");
   const pending = await pendingLoginStore.load();
@@ -367,7 +381,7 @@ async function pollPendingDeviceLogin({
   const pendingAuthUrl = validateAuthUrl(pending.authUrl, {
     allowLocalhost: pending.allowLocalhost === true,
   });
-  const client = new DeviceAuthClient({ baseUrl: pendingAuthUrl });
+  const client = clientFactory(pendingAuthUrl);
   let response;
   try {
     if (wait) {
@@ -385,7 +399,7 @@ async function pollPendingDeviceLogin({
       );
       if (!json) process.stdout.write("\n");
     } else {
-      response = await client.exchange(pending.deviceCode);
+      response = await exchangeWithNetworkRetry(client, pending.deviceCode, pending.expiresAt);
     }
   } catch (error) {
     if (
@@ -434,20 +448,22 @@ async function pollPendingDeviceLogin({
     throw error;
   }
 
-  const remote = await verifyAndPersistLogin({
-    response,
-    client,
-    tokenStore,
-    url,
-  });
-  await clearPendingLogin(pendingLoginStore, pending);
+  let remote;
+  try {
+    remote = await verifyAndPersistLogin({ response, client, tokenStore, url, probe });
+  } finally {
+    // An exchanged device code is consumed, even if validation or persistence fails.
+    await clearPendingLogin(pendingLoginStore, pending);
+  }
+  if (remote.credentialPersisted === false) throw new Error(`登录令牌已兑换，但凭据尚未保存成功。${remote.warning}`);
   const result = {
     status: "success",
-    message: "登录成功",
+    message: remote.warning || "登录成功",
+    ...(remote.credentialPersisted === false ? { credential_persisted: false } : {}),
     tool_count: remote.toolCount,
   };
   if (json) printJson(result);
-  else console.log(`登录成功：${remote.detail}；令牌已保存到系统凭据库。`);
+  else console.log(`登录成功：${remote.detail}；${remote.warning || "令牌已保存到系统凭据库。"}`);
 }
 
 async function deviceLogin({
@@ -479,7 +495,7 @@ async function deviceLogin({
   const client = new DeviceAuthClient({ baseUrl: authUrl });
   const start = await client.start();
   console.log(`请使用微信扫描二维码完成登录（验证码 ${start.user_code}）：`);
-  console.log(await renderQrCode(start.qr_code_uri));
+  console.log(await renderQrCode(start.qr_code_uri || start.verification_uri_complete || start.verification_uri));
   console.log(
     `若终端二维码无法识别，请打开：${start.verification_uri_complete}`,
   );
@@ -493,7 +509,8 @@ async function deviceLogin({
     tokenStore,
     url,
   });
-  console.log(`登录成功：${remote.detail}；短期访问令牌已保存到系统凭据库。`);
+  if (remote.credentialPersisted === false) throw new Error(`登录令牌已兑换，但凭据尚未保存成功。${remote.warning}`);
+  console.log(`登录成功：${remote.detail}；${remote.warning || "短期访问令牌已保存到系统凭据库。"}`);
 }
 
 async function login({
@@ -509,7 +526,7 @@ async function login({
   allowLocalhost = false,
 }) {
   if (legacyApiKey) return legacyLogin({ home, dryRun, url });
-  return deviceLogin({
+  const operation = () => deviceLogin({
     dryRun,
     authUrl,
     url,
@@ -519,11 +536,13 @@ async function login({
     json,
     allowLocalhost,
   });
+  return noWait || dryRun ? operation() : withLoginLock(operation);
 }
 
 export async function logout({
   home,
   dryRun,
+  force = false,
   authUrl,
   tokenStore,
   pendingLoginStore,
@@ -535,13 +554,13 @@ export async function logout({
     return;
   }
 
-  const current = await tokenStore.load();
-  if (current?.refreshToken) {
+  const current = force ? null : await tokenStore.load();
+  if (current?.refreshToken && !force) {
     try {
       await clientFactory(authUrl).revoke(current.refreshToken);
     } catch (error) {
       throw new Error(
-        `远端令牌撤销失败，本机凭据已保留，请稍后重试退出：${error.message}`,
+        `远端令牌撤销失败，本机凭据已保留，请稍后重试；也可运行 shiliu logout --force 只清除本地凭据（远端令牌仍可能有效）：${error.message}`,
       );
     }
   }
@@ -550,15 +569,22 @@ export async function logout({
   const pending = await pendingLoginStore.load();
   await clearPendingLogin(pendingLoginStore, pending);
   await clearLegacyApiKey({ home, dryRun: false });
-  console.log("已退出登录，并从系统凭据库清除令牌和旧版兼容凭据。");
+  console.log(force ? "已强制清除本地凭据；未撤销远端令牌。" : "已退出登录，并从系统凭据库清除令牌和旧版兼容凭据。");
 }
 
 async function ensureLogin(options) {
-  const authorization = await resolveAuthorization({
+  if (options.dryRun) return;
+  let authorization;
+  try { authorization = await resolveAuthorization({
     home: options.home,
     authUrl: options.authUrl,
     tokenStore: options.tokenStore,
-  });
+  }); } catch (error) {
+    if (error.code !== "invalid_grant") throw error;
+    if (options.json) throw new DeviceAuthError("login_required", "登录凭据已失效，需要重新登录：shiliu login");
+    console.log("登录凭据已失效，需要重新登录。");
+    authorization = { token: "" };
+  }
   if (authorization.token) return;
   await login(options);
 }
@@ -580,6 +606,7 @@ async function install({
     authUrl,
     legacyApiKey,
     tokenStore,
+    json,
   });
   const requestedAgent = agent === "auto" ? undefined : agent;
   if (requestedAgent && !SUPPORTED_AGENTS.includes(requestedAgent)) {
@@ -649,6 +676,10 @@ export async function runCli(argv = process.argv.slice(2)) {
         json: options.json,
       });
     } else {
+      if (options.dryRun) {
+        printJson({ status: "dry_run", message: "将检查已登记 Skill；未创建目录、未写入文件。" });
+        return;
+      }
       await printSkillRefresh({
         home,
         cwd: process.cwd(),
@@ -672,14 +703,15 @@ export async function runCli(argv = process.argv.slice(2)) {
   }
   if (options.command === "login") {
     if (options.subcommand === "poll") {
-      await pollPendingDeviceLogin({
+      if (options.dryRun) { printJson({ status: "dry_run" }); return; }
+      await withLoginLock(() => pollPendingDeviceLogin({
         session: options.session,
         wait: options.wait,
         json: options.json,
         url,
         tokenStore,
         pendingLoginStore,
-      });
+      }));
       return;
     }
     await login({
@@ -700,6 +732,7 @@ export async function runCli(argv = process.argv.slice(2)) {
     return logout({
       home,
       dryRun: options.dryRun,
+      force: options.force,
       authUrl,
       tokenStore,
       pendingLoginStore,
@@ -711,12 +744,13 @@ export async function runCli(argv = process.argv.slice(2)) {
       url,
       authUrl,
       json: options.json,
+      dryRun: options.dryRun,
     });
-    if (!result.remote.ok) process.exitCode = 1;
+    if (!result.remote.ok && !result.loginRequired) process.exitCode = 1;
     return;
   }
   if (options.command === "tools") {
-    await printTools({ home, url, authUrl, json: options.json });
+    await printTools({ home, url, authUrl, json: options.json, dryRun: options.dryRun });
     return;
   }
   if (options.command === "doctor") {
