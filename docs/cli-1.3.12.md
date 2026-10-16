@@ -1,6 +1,6 @@
 # CLI 1.3.12 发布说明
 
-1.3.12 已于 2026-10-16 发布到 npm，公开包安装验收通过；匹配版本的官网安装文件和 Skill 分发尚未上线。不能仅凭新 npx 代理已连接就认定全局 `shiliu` 已更新。
+1.3.12 已于 2026-10-16 发布到 npm，公开包安装验收通过；匹配版本的官网安装文件和 Skill 分发已上线。不能仅凭新 npx 代理已连接就认定全局 `shiliu` 已更新。
 
 版本说明统一使用 `docs/cli-<版本>.md`，本文件是 1.3.12 的版本记录。`RELEASE_CLI.md` 只维护跨版本通用发布流程，不复制各版本变更及发布结果。
 
@@ -36,4 +36,16 @@
 - 9 个公开包入口检查通过：版本、三个客户端乘两种 scope 的安装路径 dry-run、普通及 force 未登记 refresh。未登记 Git 项目文件摘要不变，隔离用户目录未创建。
 - 使用公开包及 Node 18.14.1 完成生产 MCP stdio 初始化，发现 31 个工具，免费余额查询成功且 `charged=false`，ping 成功，没有调用付费工具。此项使用 SDK 驱动，不代替真实客户端发现验收。
 
-仍待完成：官网三个安装文件与完整 Skill 分发上线、旧用户升级通知、真实 Codex/Claude Code/Cursor 客户端发现 Skill，以及真实 macOS Keychain/Linux Secret Service 刷新验收。未登记旧副本不会因 npm 发版而自动更新或删除。
+官网三个安装文件、归档、6 个逐文件内容及索引共 11 个文件已上线，逐字节匹配 main `5d98c99`，索引摘要为 `sha256:a76bbcd158520cbf62663cd251abd78a8e3756013a06eb06639af9ff39b69c26`。全新隔离 HOME 下分别用公开 1.3.12 安装 Claude Code 和 Codex Skill，目标均已登记，落盘 SKILL.md 均包含 target_not_registered 正常静默跳过的说明。
+
+真实客户端验收使用已登录的 Claude Code 2.1.201。在新 Git 项目中，客户端实际发现并加载本项目 Skill，执行正式的项目安装登记命令，并通过原生 MCP 调用一次 get_account_balance，实际响应 charged=false。客户端可见 31 个工具：28 个业务工具和 3 个登录/连接辅助工具，没有调用付费工具。
+
+另一个未登记 Git 项目预放一份新 Skill 作为未登记副本夹具，模拟客户端仍能加载该 Skill 的情况。客户端执行普通余额查询时只运行一次正常 refresh，没有 install 或 --force，也没有向用户报告未登记状态。任务前后全部 25 个文件的摘要一致；独立 JSON 诊断确认 skipped/target_not_registered 和 1 个 unmanagedInstallations 条目。客户端默认使用无 --json 的 refresh，实际输出为“未登记刷新目标；继续使用当前可用能力，未执行安装。”，原生余额查询继续成功。
+
+Codex CLI 0.116.0 的尝试因其账户拒绝本机配置的 gpt-6.1-sol 模型而没有执行验收，不能算 Codex 客户端通过；没有更改全局模型配置。真实 macOS Keychain/Linux Secret Service 刷新尚未验收。
+
+## 旧用户升级通知
+
+1.3.11 会在没有登记的项目中写入 Skill 副本。npx MCP 代理更新不会自动更新全局 `shiliu`：请重新运行[官网安装指南](https://bigbrain.work/shiliuAI/install.txt)中的对应安装脚本，以 `shiliu --version` 确认不低于 1.3.12，然后重连 MCP。
+
+升级不会自动删除旧副本。显式升级或诊断时，可查看 `shiliu skill refresh --json` 的 `unmanagedInstallations`，逐个登记需要保留的副本，或经核对后手动删除具体的 `shiliu-ai-mcp` 目录。不要删除整个 `.hermes/skills` 或共享的 `skills-lock.json`；普通任务遇到 skipped/target_not_registered 时静默继续，不自动安装或清理。
