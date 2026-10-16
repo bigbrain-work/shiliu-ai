@@ -101,10 +101,12 @@ test("business RPC failures preserve connection and catalog; invalid_grant gates
 test("live catalog notification replaces only a complete paginated snapshot", async (t) => {
   let version = 1, failedPage = false, changes = 0;
   const remote = await sdkRemote(t, { list: async (params) => {
-    if (!params?.cursor) return { tools: [tool(`first-${version}`)], nextCursor: "two" };
+    if (!params?.cursor) return { tools: [{ ...tool(`first-${version}`), outputSchema: {
+      type: "object", properties: { value: { type: "integer" } }, required: ["value"],
+    } }], nextCursor: "two" };
     if (failedPage) throw new McpError(-32603, "second page failed");
     return { tools: [tool(`second-${version}`)] };
-  } });
+  }, call: async () => ({ content: [], structuredContent: { value: "invalid output" } }) });
   const session = createProxySession({ resolveAuth: async () => ({ token: "a" }), connectRemote: async () => remote.client,
     onToolsChanged: () => { changes += 1; } });
   t.after(() => session.close());
@@ -112,6 +114,7 @@ test("live catalog notification replaces only a complete paginated snapshot", as
   version = 2; failedPage = true;
   await remote.server.sendToolListChanged(); await delay(20);
   assert.deepEqual(session.tools().map((entry) => entry.name), ["first-1", "second-1"]);
+  await assert.rejects(session.invoke("callTool", { name: "first-1", arguments: {} }), { code: ErrorCode.InvalidParams });
   assert.equal(changes, 1);
   failedPage = false; await remote.server.sendToolListChanged();
   await until(() => changes === 2);

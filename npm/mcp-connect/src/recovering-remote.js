@@ -1,6 +1,6 @@
 import { UnauthorizedError } from "@modelcontextprotocol/sdk/client/auth.js";
 import { StreamableHTTPError } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { McpError, ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
+import { McpError, ListToolsResultSchema, ToolListChangedNotificationSchema } from "@modelcontextprotocol/sdk/types.js";
 import { cancelledRequest, closeBriefly, createRequestContext } from "./request-context.js";
 import { readAllTools } from "./tool-catalog.js";
 
@@ -136,9 +136,15 @@ export async function connectRecoveringRemote({
     context.signal.throwIfAborted();
     generation.requests.add(context);
     try {
-      return await context.run(() => method === "callTool"
-        ? generation.client.callTool(params, undefined, context.options())
-        : generation.client[method](params, context.options()));
+      return await context.run(() => {
+        if (method === "callTool") return generation.client.callTool(params, undefined, context.options());
+        // Client.listTools caches each page immediately. Keep validators/task
+        // metadata from the last complete catalog until all new pages succeed.
+        if (method === "listTools" && generation.client.request) {
+          return generation.client.request({ method: "tools/list", params }, ListToolsResultSchema, context.options());
+        }
+        return generation.client[method](params, context.options());
+      });
     } finally {
       generation.requests.delete(context);
       if (generation.draining && !generation.requests.size) void closeGeneration(generation);
