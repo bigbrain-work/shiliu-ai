@@ -1,6 +1,6 @@
-# CLI 1.3.19 候选
+# CLI 1.3.19 发布记录
 
-状态：源码及本地验证完成，尚未发布 npm、创建版本标签或更新官网。本页不是公开发布成功记录。
+状态：2026-10-26 已正式发布 npm 1.3.19，并同步官网指南。发布源码为 PR #37 合入的 `eaba59315e1b2398cdbf28e6d15bbd17476a1706`；[GitHub Release](https://github.com/bigbrain-work/shiliu-ai/releases/tag/v1.3.19) 与 npm 版本一致。
 
 ## 修改内容
 
@@ -52,9 +52,13 @@ shiliu doctor --dry-run --json
 
 候选 tarball SHA256：`23115ce63fb6660100a7d6cecedcaed7693059e608c7663f910c6ef20a0ed4e1`。验收证据保存在本次发布工作目录的 `native-1319/proof.json`、`wire-proof.json` 和配置前后校验中；公开说明不记录账号余额或凭据。
 
-## 后续正式发布
+## 正式发布结果
 
-1. 检查当前 PR 的三项 CI 均通过，并基于最终 main 重新冻结候选。
-2. 按 `RELEASE_CLI.md` 的公开包发布流程发布 1.3.19，校验公开包与候选的内容、摘要、冷安装及实际连接。
-3. 如同步官网指南，按当次线上 SHA256 并发复核、备份及逐文件原子替换发布。保留 Skill、安装脚本与其他页面，除非发布范围明确包含它们。
-4. 客户更新 CLI 后重连 MCP；Skill 登记仍须明确选择路径，不静默处理历史副本。
+1. PR 与合入 main 的 CI 均通过。正式发布工作流 `40317351578` 通过 Trusted Publishing 和 provenance 发布成功；registry 曾返回处理中，等待公开可用后才继续官网发布，没有重复发布。
+2. 公开 npm latest 为 1.3.19。公开包的 SHA-512、SHA-1 与 registry 元数据一致，43 个文件逐字节匹配冻结 main，SHA256 与上面的原生验收候选一致。全新缓存、独立前缀的 Node 18.14.1 严格 engines 冷安装成功，审计为 0，9 项 smoke 通过。
+3. 仅替换官网 `install.txt`，新增旧 Skill 的只读诊断及显式登记说明。即时线上快照、SHA256 并发核对、diff 审阅、备份和原子替换完成；13 个保留文件及 Nginx 配置未改。两个公开入口共 26 个文件下载与冻结 main 一致，官方安装器在独立前缀报告 `CLI installed. Version: 1.3.19`，实际 stdio 握手、35 项目录发现通过；公开分发一致性检查通过。
+4. 官网备份为 `47.94.105.123:/usr/share/nginx/allproduct/guide-backup-shiliu-cli-1.3.19-20261026-194240`，指南 SHA256 为 `b73a73c5632073a1ee8e379d03581c19cf5314f3842a4194f5dbbc2886a7fb4c`。本机全局 CLI 已更新到 1.3.19；源码原目录安全快进，旧依赖的 4115 个文件已完整备份校验后再按锁文件安装，新依赖审计为 0。
+
+客户更新 CLI 后仍须重连已有 MCP 进程；Skill 登记继续明确选择路径，不静默处理历史副本。生产 Java 后端不属于本次发布。
+
+完整证据目录：`D:\program\.release\shiliu-cli-1.3.19-20261026-194240`。关键文件为 `registry-verification.json`、`public-audit.json`、`public-smoke.json`、`website-verification.json`、`public-installer.log`、`guide-published.json` 和 `original-deps-backup.json`。原生验收证据仍在此前候选目录 `native-1319/proof.json` 中；公开 tarball 与该候选完全一致。
