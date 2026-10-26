@@ -157,6 +157,7 @@ export async function installShiliuSkill({
     installPath,
     installMethod: "direct_website",
     refreshTargetRecorded: false,
+    existingInstallation: await validSkill(installPath),
   };
   if (dryRun) return { status: "dry_run", ...description, installedAt: null };
   const releaseLock = await acquireLock(home);
@@ -420,10 +421,14 @@ export async function refreshShiliuSkill({
 export async function printSkillInstall(options = {}) {
   const result = await installShiliuSkill(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
-  else
+  else {
+    if (result.status === "dry_run" && result.existingInstallation) {
+      console.log("此路径已有石榴 Skill；正式执行将更新并登记所选路径，其他安装保持不变。");
+    }
     console.log(
       `${result.status === "dry_run" ? "演练模式，未安装：" : "Skill 已安装并登记："}${result.installPath}（${result.scope}，direct_website）`,
     );
+  }
   return result;
 }
 

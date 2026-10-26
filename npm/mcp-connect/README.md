@@ -55,6 +55,11 @@ npx -y @bigbrain-work/mcp-connect logout
 
 安装后也可使用 `shiliu` 命令。原有 `mcp-connect` 命令保持兼容。
 
+旧版 Skill 若没有登记安装目标，即使加 `refresh --force` 也不会被自动接管。
+运行 `shiliu doctor --dry-run --json`，查看 `skill.installations` 中的实际路径、范围、登记状态和 `registration` 命令。
+doctor 只读检查已知位置及历史记录，不安装、不登记、不移动文件。确认要继续使用某个副本后，在报告的 `cwd` 中显式执行对应 `skill install` 命令；可先加 `--dry-run` 查看是否已有安装及将登记的路径。
+显式安装只更新和登记所选路径，保留其他副本。登记后，后续刷新才会按 24 小时冷却机制更新这个目标。
+
 `--url` 和 `--auth-url` 默认只接受石榴 AI 正式服务地址。开发者如需连接
 `127.0.0.1`、`localhost` 或 `::1` 上的测试服务，必须显式添加
 `--allow-localhost`；该开关不会放行局域网或公网第三方地址。

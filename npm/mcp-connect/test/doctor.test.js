@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 import { getDoctorReport } from "../src/doctor.js";
 
@@ -21,6 +24,25 @@ function runtimeFixture() {
     boundary: "baseline only",
   };
 }
+
+test("doctor dry-run reports an old user Skill without registering or installing it", async t => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "shiliu-doctor-skill-"));
+  t.after(async () => {
+    assert.equal(path.dirname(home), path.resolve(os.tmpdir()));
+    await rm(home, { recursive: true, force: true });
+  });
+  const installPath = path.join(home, ".agents", "skills", "shiliu-ai-mcp");
+  await mkdir(installPath, { recursive: true });
+  await writeFile(path.join(installPath, "SKILL.md"), "---\nname: shiliu-ai-mcp\n---\nold\n");
+  const report = await getDoctorReport({
+    home, cwd: home, dryRun: true, env: {}, collectRuntime: runtimeFixture,
+    verifyLaunch: () => assert.fail("Dry-run cannot launch MCP"),
+  });
+  assert.equal(report.skill.status, "registration_required");
+  assert.equal(report.skill.installations[0].installPath, installPath);
+  assert.equal(report.skill.installations[0].registered, false);
+  await assert.rejects(readFile(path.join(home, ".shiliu-ai", "skill-refresh.json")), { code: "ENOENT" });
+});
 
 test("doctor reports local stdio verification without claiming client access", async () => {
   const report = await getDoctorReport({

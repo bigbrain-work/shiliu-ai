@@ -6,6 +6,7 @@ import { collectRuntimeDiagnostics } from "./runtime-diagnostics.js";
 import { launchContext, runNpm } from "./launch-context.js";
 import { PACKAGE_NAME } from "./constants.js";
 import { verifyStdioLaunch as probe } from "./stdio-probe.js";
+import { inspectShiliuSkill, formatSkillCommand } from "./skill-inspection.js";
 
 export function verifyStdioLaunch(options = {}) {
   return probe({ definition: stdioServerDefinition(), ...options });
@@ -19,10 +20,14 @@ export async function getDoctorReport({
   verifyLaunch = verifyStdioLaunch,
   nodePath, npmCli, npmCache, launchFile, standardOnly = false,
   prepare = false, prepareNpm = runNpm,
+  home, cwd = process.cwd(), inspectSkill = inspectShiliuSkill,
 } = {}) {
   const context = await launchContext({ nodePath, npmCli, npmCache, launchFile }, env);
   env = context.env;
   const runtime = collectRuntime({ platform, env });
+  let skill;
+  try { skill = await inspectSkill({ home, cwd, env }); }
+  catch { skill = { status: "inspection_failed", installations: [], issues: [], detail: "Skill 检查未完成，请核对目录访问权限；未修改文件。" }; }
   const { candidates: baseCandidates } = stdioConfigurationCandidates({
     platform,
     env,
@@ -98,6 +103,7 @@ export async function getDoctorReport({
     installation: { node_path: context.node, npm_cli: context.npmCli || null, npm_cache: context.env.npm_config_cache || null },
     candidates,
     stdio_launch: launch,
+    skill,
     client_connection: {
       state: "unverified",
       detail:
@@ -145,5 +151,19 @@ export async function printDoctor(options = {}) {
   }
   console.log(`stdio 本机验证    ${report.stdio_launch.detail}`);
   console.log(`客户端连接状态    ${report.client_connection.detail}`);
+  console.log(`Skill 状态        ${report.skill.detail}`);
+  for (const installation of report.skill.installations) {
+    console.log(`  ${installation.scope}：${installation.installPath}；${installation.registered ? "已登记" : "未登记"}${installation.exists ? "" : "，目标缺失"}`);
+    if (!installation.registered || !installation.exists) {
+      console.log(`  请先确认目标；执行目录：${installation.registration.cwd}`);
+      console.log(`  ${formatSkillCommand(installation.registration.command)}`);
+    }
+  }
+  for (const issue of report.skill.issues) {
+    if (issue.registration) {
+      console.log(`  登记需要迁移；执行目录：${issue.registration.cwd}`);
+      console.log(`  ${formatSkillCommand(issue.registration.command)}`);
+    }
+  }
   return report;
 }
