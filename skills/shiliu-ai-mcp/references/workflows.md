@@ -6,6 +6,10 @@ Always resolve the exact live tool name and schema through `tools/list` before a
 
 Read [web-search.md](web-search.md), then call the live `web_search` tool with the scope and query shape described there. Use the structured results as evidence; fetch a result page separately only when the task needs its full contents.
 
+## Creator discovery
+
+Read [creator-discovery.md](creator-discovery.md). It chains category, creator search, identity matching and works-list tools. Estimate the cost and get the user's confirmation and point cap before the first paid call.
+
 ## Single video or author lookup
 
 1. Identify the platform from the URL.
