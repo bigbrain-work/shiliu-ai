@@ -1,6 +1,6 @@
 ---
 name: shiliu-ai-mcp
-description: "Use Shiliu AI MCP when a request involves public web search; Douyin or TikTok author/video data; engagement or play-count data; video or audio text extraction; AI speech/video generation; local video editing; Feishu data-sync tasks; Shiliu task status; or Shiliu points balance, even when the user does not name Shiliu AI. Discover the live MCP tool catalog before choosing a tool because tools and schemas can change."
+description: "Use Shiliu AI MCP when a request involves public web search; Douyin or TikTok author/video data; Douyin creator (达人/KOL) categories, discovery by category, identity matching, or their works for viral-video (爆款) analysis; engagement or play-count data; video or audio text extraction; AI speech/video generation; local video editing; Feishu data-sync tasks; Shiliu task status; or Shiliu points balance, even when the user does not name Shiliu AI. Discover the live MCP tool catalog before choosing a tool because tools and schemas can change."
 ---
 
 # Shiliu AI MCP
@@ -31,7 +31,14 @@ If the server is missing or unhealthy, read [installation.md](references/install
 - Reuse an already available complete paid response instead of calling the tool again. If the original response is lost, truncated, or inaccessible, tell the user that another query may charge again and obtain approval before repeating it.
 - When a page returns more paid records than you display, state both the retrieved and displayed counts and retain the undisplayed records when the context or an output file remains available. A later request for those retained records must not trigger a duplicate query.
 
-For public-web search, read [web-search.md](references/web-search.md) before calling `web_search`. The Shiliu MCP response envelope places the documented search response under `data` and adds a sibling `billing` object.
+## Scenario playbooks
+
+Some scenarios span several tools. Before the first tool call in such a scenario, read its playbook. Read only the playbooks the task needs.
+
+| Scenario | Playbook |
+| --- | --- |
+| Public web search (`web_search`). The Shiliu MCP response envelope places the documented search response under `data` and adds a sibling `billing` object. | [web-search.md](references/web-search.md) |
+| Creator (达人/KOL) categories, account category lookup, creators by category, and their Douyin works (for example, to look for viral videos). Requires a cost estimate and user confirmation before paid calls. | [creator-discovery.md](references/creator-discovery.md) |
 
 Read [workflows.md](references/workflows.md) for task patterns and [billing.md](references/billing.md) when a request may consume points.
 
