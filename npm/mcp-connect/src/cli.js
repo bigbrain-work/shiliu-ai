@@ -8,6 +8,7 @@ import { formatCliErrorPayload } from "./cli-errors.js";
 import {
   configureAgent,
   stdioConfigurationCandidates,
+  remoteServerDefinition,
 } from "./configurators.js";
 import {
   API_KEY_ENV,
@@ -49,6 +50,7 @@ import { readToolArguments, runToolCall } from "./tool-call.js";
 import { printUpdateStatus } from "./updater.js";
 import { McpDiagnosticError } from "./mcp-diagnostics.js";
 import { withCredentialRefreshLock } from "./credential-refresh-lock.js";
+import { onboardingState } from "./onboarding-state.js";
 
 const withLoginLock = operation => withCredentialRefreshLock(operation, { name: "device-login" });
 
@@ -59,7 +61,7 @@ function printHelp() {
   shiliu login
   shiliu login --no-wait --json
   shiliu login poll --session <id> [--wait] [--json]
-  shiliu install [--agent <name>]
+  shiliu install [--agent <name>] [--transport http|stdio]
   shiliu status [--json]
   shiliu tools [--json]
   shiliu doctor [--transport stdio] [--dry-run] [--json]
@@ -89,7 +91,7 @@ function printHelp() {
       --no-wait       创建登录会话后立即返回
       --wait          等待指定登录会话完成
       --force         强制刷新 Skill、显式覆盖 call --out，或 logout 仅清除本地凭据
-      --transport <type> doctor 要验证的传输方式（当前仅 stdio）
+      --transport <type> install 默认 http（网页 OAuth）；兼容桥接选 stdio。doctor 仅 stdio
       --standard-only doctor 只验收标准 npx 启动，不用备选安装掩盖失败
       --prepare       doctor 先按目标 Node/npm/cache 预热包，再开始握手计时
       --launch-file <path> 读取标准 JSON 中 shiliu_mcp 的无凭据启动配置
@@ -120,8 +122,15 @@ function printHelp() {
 
 function printGenericInstructions(
   agent,
-  { dryRun = false, json = false } = {},
+  { dryRun = false, json = false, transport = "http", url = MCP_URL } = {},
 ) {
+  if (transport === "http") {
+    const result = { agent, configuration_state: "generated_only", config_path: null,
+      reload_required: false, transport: "http", authentication: "oauth",
+      configuration: { mcpServers: { [SERVER_NAME]: remoteServerDefinition(url) } } };
+    if (!json) console.log(`请在当前客户端添加远程 HTTP MCP ${SERVER_NAME}，地址 ${url}，然后在客户端发起网页 OAuth 授权。无需 CLI 登录或本地二维码。\n${JSON.stringify(result.configuration, null, 2)}`);
+    return result;
+  }
   const { runtime, candidates } = stdioConfigurationCandidates();
   const standard = candidates.find((candidate) => candidate.preferred);
   const config = {
@@ -598,19 +607,13 @@ async function install({
   legacyApiKey,
   tokenStore,
   json,
+  transport = "http",
 }) {
-  await ensureLogin({
-    home,
-    dryRun,
-    url,
-    authUrl,
-    legacyApiKey,
-    tokenStore,
-    json,
-  });
+  // Configuration never requires CLI/keyring authentication. HTTP credentials belong
+  // to the host; legacy stdio can bootstrap its own login tools without credentials.
   const requestedAgent = agent === "auto" ? undefined : agent;
   if (requestedAgent && !SUPPORTED_AGENTS.includes(requestedAgent)) {
-    const result = printGenericInstructions(requestedAgent, { dryRun, json });
+    const result = printGenericInstructions(requestedAgent, { dryRun, json, transport, url });
     if (json) printJson({ status: "configuration_generated", results: [result] });
     return;
   }
@@ -619,17 +622,21 @@ async function install({
     ? [requestedAgent]
     : await detectInstalledAgents({ home });
   if (agents.length === 0) {
-    const result = printGenericInstructions("当前客户端", { dryRun, json });
+    const result = printGenericInstructions("当前客户端", { dryRun, json, transport, url });
     if (json) printJson({ status: "configuration_generated", results: [result] });
     return;
   }
   const results = [];
   for (const detectedAgent of agents) {
-    results.push(await configureAgent(detectedAgent, { dryRun, home }));
+    results.push(await configureAgent(detectedAgent, { dryRun, home, transport, url }));
   }
   if (json) {
     printJson({
       status: dryRun ? "dry_run" : "configured",
+      transport,
+      authentication: transport === "http" ? "oauth" : "bridge_login",
+      next_action: "reload_then_authorize_and_verify_native_balance",
+      onboarding: onboardingState({ mcp: results.some(result => result.reload_required) ? "awaiting_reload" : "not_configured" }),
       reload_required: results.some((result) => result.reload_required),
       results,
     });
@@ -638,7 +645,7 @@ async function install({
   console.log(
     dryRun
       ? `检查完成：将为 ${agents.join("、")} 配置 ${MCP_URL}，未写入文件。`
-      : `配置已写入：${agents.join("、")}。请重启或重载客户端后运行 shiliu status。`,
+      : `配置已写入：${agents.join("、")}。请重连客户端中的 MCP，完成授权，再通过原生 MCP 查询免费余额。CLI 状态不代表客户端连接状态。`,
   );
   for (const result of results) {
     console.log(`${result.agent} 配置位置：${result.config_path}`);
@@ -803,5 +810,6 @@ export async function runCli(argv = process.argv.slice(2)) {
     allowLocalhost: options.allowLocalhost,
     tokenStore,
     json: options.json,
+    transport: options.transport,
   });
 }
