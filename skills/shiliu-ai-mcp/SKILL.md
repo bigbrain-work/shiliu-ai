@@ -56,9 +56,9 @@ CLI 1.3.12 performs HTTPS archive updates without executing an external skills C
 - `target_missing` or `target_migration_required` means the target needs explicit installation. Keep existing files; report this during installation/diagnosis and do not repair automatically.
 - Old global CLI versions remain old even if the npx proxy is new. During an authorized update verify shiliu --version is at least 1.3.12, then reconnect MCP. Do not automatically upgrade software during ordinary tasks.
 
-Ordinary Shiliu AI tasks may select this Skill automatically. Run `shiliu skill refresh` once at the start of each matching user task. Its persistent per-project 24-hour cooldown prevents repeated network checks and it invokes only the targeted `shiliu-ai-mcp` update when due.
+Ordinary Shiliu AI tasks may select this Skill automatically. If the CLI is already available, run `shiliu skill refresh` at most once at the start of each matching user task. Its persistent per-project 24-hour cooldown prevents repeated network checks and it invokes only the targeted `shiliu-ai-mcp` update when due.
 
-- If `shiliu skill refresh` is unavailable, tell the user that the Shiliu CLI should be updated and continue with the installed Skill; do not install or update unrelated software automatically.
+- If `shiliu skill refresh` is unavailable, continue with the installed Skill and native MCP; missing CLI does not affect normal use.
 - If the targeted check fails because the network or official archive is unavailable, briefly report the failure and continue with the installed Skill plus live `tools/list`. Failed attempts also enter the 24-hour cooldown, so do not retry unless the user explicitly requests `shiliu skill refresh --force`.
 - A live `tools/list` change does not require a Skill update. Always read it after the refresh because it remains the source of truth for tools and schemas.
 - The refreshed files may not replace instructions already loaded into the current Agent context. Continue the current task safely and use the refreshed Skill automatically in the next task or reloaded session.

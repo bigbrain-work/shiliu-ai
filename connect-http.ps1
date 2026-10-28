@@ -25,7 +25,7 @@ try {
         client_name = $ClientName; code_challenge = $challenge; mcp_failure = $McpFailure
     } | ConvertTo-Json -Compress)
     $authorize = [Uri]$start.authorization_url
-    if ($authorize.Scheme -ne 'https' -or $authorize.Host -ne 'bigbrain.work' -or $authorize.AbsolutePath -ne '/shiliuai/agent-authorize') { throw 'invalid_authorization_url' }
+    if ($authorize.Scheme -ne 'https' -or $authorize.Host -notin @('bigbrain.work', 'www.bigbrain.work') -or $authorize.AbsolutePath -ne '/shiliuai/agent-authorize') { throw 'invalid_authorization_url' }
     # An interactive browser is intentional: the user must see and approve consent.
     Start-Process -FilePath $authorize.AbsoluteUri | Out-Null
     Write-Host '已打开石榴 AI 页面。请登录并确认是否允许本次 Agent 配置已有 API Key。'
