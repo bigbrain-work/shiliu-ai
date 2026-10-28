@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { PACKAGE_NAME, SERVER_NAME } from "./constants.js";
+import { PACKAGE_NAME, SERVER_NAME, MCP_URL } from "./constants.js";
 import { collectRuntimeDiagnostics } from "./runtime-diagnostics.js";
 
 export function stdioServerDefinition(platform = process.platform) {
@@ -96,6 +96,17 @@ export function stdioConfigurationCandidates({
 export function codexArguments(platform = process.platform) {
   const proxy = stdioServerDefinition(platform);
   return ["mcp", "add", SERVER_NAME, "--", proxy.command, ...proxy.args];
+}
+
+export function remoteServerDefinition(url = MCP_URL) {
+  const endpoint = new URL(url);
+  if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash)
+    throw new Error("远程 MCP 地址必须是无凭据、无查询参数的 HTTPS 地址");
+  return { url: endpoint.href };
+}
+
+export function remoteCodexArguments(url = MCP_URL) {
+  return ["mcp", "add", SERVER_NAME, "--url", remoteServerDefinition(url).url];
 }
 
 export function claudeServerDefinition(platform = process.platform) {
@@ -217,12 +228,13 @@ export function configureCodex(options = {}) {
     environment.CODEX_HOME || path.join(home, ".codex"),
     "config.toml",
   );
+  const args = options.transport === "http" ? remoteCodexArguments(options.url) : codexArguments();
   try {
-    execute("codex", codexArguments(), options);
+    execute("codex", args, options);
   } catch (error) {
     if (!isDuplicateError(error)) throw error;
     replaceExisting(configPath, () => execute("codex", ["mcp", "remove", SERVER_NAME], options),
-      () => execute("codex", codexArguments(), options));
+      () => execute("codex", args, options));
   }
   return {
     agent: "codex",
@@ -241,7 +253,7 @@ export function configureClaude(options = {}) {
     "--scope",
     "user",
     SERVER_NAME,
-    JSON.stringify(claudeServerDefinition()),
+    JSON.stringify(options.transport === "http" ? { type: "http", ...remoteServerDefinition(options.url) } : claudeServerDefinition()),
   ];
   try {
     execute("claude", addArgs, options);
@@ -261,11 +273,11 @@ export function configureClaude(options = {}) {
   };
 }
 
-export async function configureCursor({ home, dryRun = false } = {}) {
+export async function configureCursor({ home, dryRun = false, transport, url } = {}) {
   const configPath = path.join(home, ".cursor", "mcp.json");
   if (dryRun) {
     console.log(
-      `[dry-run] 更新 ${configPath} 中的 ${SERVER_NAME}，使用本地 stdio 桥接`,
+      `[dry-run] 更新 ${configPath} 中的 ${SERVER_NAME}，使用 ${transport === "http" ? "远程 HTTP OAuth" : "本地 stdio 桥接"}`,
     );
     return {
       agent: "cursor",
@@ -288,7 +300,7 @@ export async function configureCursor({ home, dryRun = false } = {}) {
 
   config.mcpServers = {
     ...(config.mcpServers || {}),
-    [SERVER_NAME]: cursorServerDefinition(),
+    [SERVER_NAME]: transport === "http" ? remoteServerDefinition(url) : cursorServerDefinition(),
   };
   await mkdir(path.dirname(configPath), { recursive: true });
   const tempPath = `${configPath}.${process.pid}.tmp`;

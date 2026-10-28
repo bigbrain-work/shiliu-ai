@@ -143,15 +143,14 @@ if ($install.ExitCode -ne 0) {
 
 $shiliuCommand = Resolve-NativeCommand @('shiliu.cmd', 'shiliu') 'The shiliu command is not on PATH. Open a new terminal and retry.'
 $shiliuVersion = Invoke-NativeVersion $shiliuCommand @('--version') 'shiliu --version returned a non-zero exit code. CLI installation could not be verified.'
-Assert-MinimumVersion $shiliuVersion '1.3.12' 'Shiliu AI CLI'
+Assert-MinimumVersion $shiliuVersion '1.4.0' 'Shiliu AI CLI'
 
-Write-Host 'Verifying the actual npx MCP launch (initialize + tools/list)...'
-$doctor = Invoke-NativeSafely $shiliuCommand @('doctor', '--transport', 'stdio', '--standard-only', '--prepare', '--json')
+Write-Host 'Verifying optional CLI remote configuration without login or keyring access...'
+$doctor = Invoke-NativeSafely $shiliuCommand @('install', '--agent', 'codex', '--transport', 'http', '--dry-run', '--json')
 $doctor.Output | ForEach-Object { Write-Host $_ }
 if ($null -eq $doctor.ExitCode -or $doctor.ExitCode -ne 0) {
-  throw 'CLI launch verification failed. Check the diagnostic error and repair the identified Shiliu npx entry before reconnecting. Do not clear credentials.'
+  throw 'Optional CLI verification failed. Existing remote MCP use is unaffected. Do not clear credentials.'
 }
 Write-Host "CLI installed. Version: $shiliuVersion"
-Write-Host 'Verified only this terminal runtime. If the Agent bundles another Node/npm, verify its launch configuration with doctor --launch-file and --node-path before enabling MCP.'
-Write-Host 'Continue with Step 3 (Install Skill) in https://bigbrain.work/shiliuAI/install.txt'
-Write-Host 'This completes only the CLI installation; follow the guide for authorization, Agent configuration, and verification.'
+Write-Host 'Only the optional developer CLI was installed. Remote MCP uses client-managed browser OAuth independently.'
+Write-Host 'Follow https://bigbrain.work/shiliuAI/install.txt; do not repeat login or MCP configuration after native balance succeeds.'

@@ -1,44 +1,27 @@
 # Installation and connection
 
-Use this reference when Shiliu AI MCP is absent or unhealthy.
+Read the [fixed installation guide](https://bigbrain.work/shiliuAI/install.txt) and
+[state contract](https://bigbrain.work/shiliuAI/onboarding.json). Never invent an
+installer, finish script, undocumented client configuration or private-store edit.
 
-## Install or repair
+Default: remote HTTP MCP with browser OAuth, no Node/npm, CLI, Skill, local QR or
+local keyring prerequisites. Complete website confirmation, reconnect if needed,
+discover native tools and call get_account_balance once without charge. Pending
+reload/authorization or cancellation is not failure. CLI calls are not MCP proof.
 
-Read the [canonical Agent installation guide](https://bigbrain.work/shiliuAI/install.txt) and follow its current steps. Do not infer installation steps from the product homepage or substitute an older flow. Resume at the failed stage after diagnosis; do not restart installation or clear credentials by default. Use the verified `shiliu` executable consistently.
+Default CLI and Skill attempts are independent and bounded to one each. Failure
+must not block MCP. After native balance succeeds say “安装已完成，可以正常使用。”
+For optional failure add only “Skill / CLI 安装未成功，但不影响正常使用。”
+Never ask the user to repair these optional components before continuing.
 
-The guide owns CLI and Skill installation, nonblocking WeChat authorization, configuration of the current Agent, and completion checks. Skill installer identifiers and Shiliu CLI adapter identifiers can differ; use the mapping in the guide. CLI 1.3.12 installs the verified website archive directly. For another client, explicitly choose its documented Skill parent with --target-dir. Refresh never installs into unregistered or missing paths; use explicit skill install for migration. During authorized upgrades verify the global shiliu version independently of the npx proxy.
+After native MCP succeeds, do not acquire API keys or configure HTTP fallback.
+Only a confirmed client-side failure after one targeted repair permits fallback.
+Explain the switch and open the official separate API-key consent page. With
+explicit permission retrieve the existing homepage key into an actually available
+secure client store, otherwise the official environment-variable helper. Never
+ask for a key in chat, create/reset a key, or read client OAuth credentials.
+Verify direct HTTP separately using free balance before reporting HTTP ready.
 
-If Skill installation is unavailable but the client supports local stdio MCP, continue MCP setup and report the missing Skill separately. Do not report full completion until the current Agent has loaded the MCP connection and can discover its live tools.
-
-## Diagnose an existing connection
-
-Run separately and inspect each result:
-
-```text
-shiliu --version
-shiliu status
-shiliu tools
-shiliu doctor --transport stdio
-```
-
-- A missing executable is a runtime or PATH issue. Preserve the current PATH when resolving it. In Windows PowerShell, use `shiliu.cmd` when execution policy blocks the PowerShell command shim.
-- `doctor` reports current and persistent PATH baselines plus locally tested stdio candidates. It cannot see the target client's environment and cannot prove that a GUI configuration was saved or loaded. Keep standard `npx` preferred; use an absolute-path candidate only with its reported upgrade, version-pinning, and reinstall tradeoffs.
-- CLI authentication and live tool discovery verify only the CLI connection. Before reporting Agent access, use the current Agent's native MCP connection to call `get_account_balance` once and confirm the successful response reports no charge. A `shiliu call` invocation does not prove Agent connectivity.
-- Configuration state `generated_only` means the CLI printed a proposal but did not install it. State `written` means the target configuration was saved. When `reload_required` is true, `configured but awaiting reload` is the normal result for the current session; reconnect before requiring Agent-side tool discovery.
-- Start login only when authentication is missing or explicitly rejected. Diagnose network and client-configuration failures before changing credentials.
-- For a pending login, show only the current local QR image, then immediately repeat its single-shot `poll_command` at `poll_after_seconds`. The user only scans with WeChat; there is no phone confirmation button and the Agent must not wait for another user reply.
-- Never request or expose access tokens, refresh tokens, internal device codes, or API keys.
-- If MCP is unsupported but commands work, use `shiliu tools --json` and `shiliu call`; never create a custom JSON-RPC client or call package-internal entry files. If neither MCP nor commands work, report the client as unsupported.
-
-## Maintenance and platform recovery
-Follow the update policy in [SKILL.md](../SKILL.md); it owns targeted `shiliu skill refresh` and cooldown. Installation does not require an additional maintenance pass. Discover tool names and schemas from the live MCP catalog.
-
-For an explicitly requested CLI version check, `shiliu update` checks npm without installing anything. Do not run an unscoped `skills update` or switch to a temporary `npx` CLI as routine repair.
-
-On Windows, the PowerShell installer retries a failed package installation once for EBUSY/EPERM, stopping only identifiable Shiliu MCP Node processes. If it still fails, report the lock or permission error and ask the user to close affected MCP clients before another attempt. After a successful upgrade, reconnect affected clients and verify their connection.
-
-If Codex reports an existing configuration error, address the reported field and line while preserving unrelated settings, then retry configuration. Do not replace the entire Agent configuration to fix a Shiliu connection.
-
-Connection recovery: https://bigbrain.work/shiliuAI/recovery.txt (public; no working MCP or installed Skill required).
-
-Credential storage: Linux requires an available Secret Service session. SSH, Docker, or WSL without Secret Service is not supported for QR login; credentials do not fall back to plaintext files.
+For existing stdio bridges use recovery.txt and shiliu doctor --transport stdio.
+Do not apply local-bridge diagnostics or legacy QR login to remote OAuth. Preserve
+unrelated servers, caches and credentials. Refresh failures never block business.

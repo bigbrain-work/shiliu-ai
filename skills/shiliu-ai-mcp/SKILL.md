@@ -9,7 +9,7 @@ Use the connected Shiliu AI MCP service as the source of truth for available too
 
 ## Start every task
 
-1. Before the first Shiliu AI MCP tool call in each user task, run `shiliu skill refresh` exactly once. The CLI returns immediately when this project was checked within the previous 24 hours and updates only existing registered `shiliu-ai-mcp` paths when due. A normal `skipped / target_not_registered` result exits 0: silently continue; never install, force-refresh or repeatedly remind the user. Do not repeat it before every tool call in the same task.
+1. If the CLI is already available, run `shiliu skill refresh` at most once before the first Shiliu call in a task. Missing CLI or refresh failure must not block MCP or trigger installation. A normal `skipped / target_not_registered` result exits 0: silently continue; never force-refresh or repeatedly remind the user. Refresh updates only existing registered targets with a 24-hour cooldown.
 2. Confirm that a Shiliu AI MCP server is available in the current Agent.
 3. Read the server's live tool catalog (`tools/list`) before selecting a tool. If the current client cannot load MCP but can execute commands, use `shiliu tools --json`; it includes the live `inputSchema`. Do not rely on a memorized tool name or schema when either live catalog path is accessible.
 4. Match the user's goal to the narrowest tool. Do not substitute a similarly named Douyin, TikTok, play-count, transcription, or media tool.
@@ -26,7 +26,7 @@ If the server is missing or unhealthy, read [installation.md](references/install
 - For author-video lists, continue pagination only when the user needs more results. Pass the exact continuation field and value returned by the previous response and accepted by the live schema; never invent or transform a cursor.
 - Preserve platform identity: Douyin inputs go to Douyin tools and TikTok inputs go to TikTok tools.
 - Return only fields supported by tool output. Label any inference explicitly.
-- Never implement a custom JSON-RPC/MCP client and never invoke a package-internal `bin/shiliu.js` path. When MCP is unavailable but command execution works, use the supported `shiliu call` command.
+- Do not invent a JSON-RPC/MCP client or invoke package-internal entry files. Prefer native MCP. Only after confirmed client-side MCP failure, follow the official guide's consented HTTP fallback or an already available `shiliu call` path. Never acquire API keys after native MCP succeeds.
 - `shiliu call --dry-run` validates arguments against the live schema but does not execute a server business call. For a large response, use optional `--out` only when the client can read the same local filesystem; do not assume cloud clients can access that file.
 - Reuse an already available complete paid response instead of calling the tool again. If the original response is lost, truncated, or inaccessible, tell the user that another query may charge again and obtain approval before repeating it.
 - When a page returns more paid records than you display, state both the retrieved and displayed counts and retain the undisplayed records when the context or an output file remains available. A later request for those retained records must not trigger a duplicate query.
@@ -56,9 +56,9 @@ CLI 1.3.12 performs HTTPS archive updates without executing an external skills C
 - `target_missing` or `target_migration_required` means the target needs explicit installation. Keep existing files; report this during installation/diagnosis and do not repair automatically.
 - Old global CLI versions remain old even if the npx proxy is new. During an authorized update verify shiliu --version is at least 1.3.12, then reconnect MCP. Do not automatically upgrade software during ordinary tasks.
 
-Ordinary Shiliu AI tasks may select this Skill automatically. Run `shiliu skill refresh` once at the start of each matching user task. Its persistent per-project 24-hour cooldown prevents repeated network checks and it invokes only the targeted `shiliu-ai-mcp` update when due.
+Ordinary Shiliu AI tasks may select this Skill automatically. If the CLI is already available, run `shiliu skill refresh` at most once at the start of each matching user task. Its persistent per-project 24-hour cooldown prevents repeated network checks and it invokes only the targeted `shiliu-ai-mcp` update when due.
 
-- If `shiliu skill refresh` is unavailable, tell the user that the Shiliu CLI should be updated and continue with the installed Skill; do not install or update unrelated software automatically.
+- If `shiliu skill refresh` is unavailable, continue with the installed Skill and native MCP; missing CLI does not affect normal use.
 - If the targeted check fails because the network or official archive is unavailable, briefly report the failure and continue with the installed Skill plus live `tools/list`. Failed attempts also enter the 24-hour cooldown, so do not retry unless the user explicitly requests `shiliu skill refresh --force`.
 - A live `tools/list` change does not require a Skill update. Always read it after the refresh because it remains the source of truth for tools and schemas.
 - The refreshed files may not replace instructions already loaded into the current Agent context. Continue the current task safely and use the refreshed Skill automatically in the next task or reloaded session.

@@ -73,14 +73,13 @@ npm_global_install @bigbrain-work/mcp-connect@latest --prefer-online
 
 command -v shiliu >/dev/null 2>&1 || fail "The shiliu command is not on PATH. Open a new terminal and retry."
 shiliu_version=$(shiliu --version) || fail "shiliu --version returned a non-zero exit code. CLI installation could not be verified."
-require_minimum_version "$shiliu_version" 1 3 12 "Shiliu AI CLI"
+require_minimum_version "$shiliu_version" 1 4 0 "Shiliu AI CLI"
 
-printf '%s\n' "Verifying the actual npx MCP launch (initialize + tools/list)..."
-shiliu doctor --transport stdio --standard-only --prepare --json || fail "CLI launch verification failed. Repair the identified Shiliu npx entry before reconnecting; do not clear credentials."
+printf '%s\n' "Verifying optional CLI remote configuration without login or keyring access..."
+shiliu install --agent codex --transport http --dry-run --json || fail "Optional CLI verification failed. Existing remote MCP use is unaffected; do not clear credentials."
 printf '%s\n' "CLI installed. Version: $shiliu_version"
-printf '%s\n' "Verified only this terminal runtime. If the Agent bundles another Node/npm, verify its launch configuration with doctor --launch-file and --node-path before enabling MCP."
-printf '%s\n' "Continue with Step 3 (Install Skill) in https://bigbrain.work/shiliuAI/install.txt"
-printf '%s\n' "This completes only the CLI installation; follow the guide for authorization, Agent configuration, and verification."
+printf '%s\n' "Only the optional developer CLI was installed; remote MCP uses independent client OAuth."
+printf '%s\n' "Follow https://bigbrain.work/shiliuAI/install.txt; never repeat login after native MCP balance succeeds."
 }
 
 main "$@"

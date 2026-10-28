@@ -30,7 +30,7 @@ test("dry-run never prints the credential", async () => {
     );
     assert.equal(result.status, 0, result.stderr);
     assert.equal(`${result.stdout}${result.stderr}`.includes(apiKey), false);
-    assert.match(result.stdout, /mcp-connect/u);
+    assert.match(result.stdout, /api\.bigbrain\.work\/shiliu\/mcp/u);
     assert.doesNotMatch(result.stdout, /Authorization|Bearer/u);
   } finally {
     await rm(home, { recursive: true, force: true });
@@ -47,6 +47,7 @@ test("unknown agent gets a portable stdio configuration", async () => {
         "install",
         "--agent",
         "openclaw",
+        "--transport", "stdio",
         "--dry-run",
         "--home",
         home,
@@ -77,6 +78,7 @@ test("unknown agent JSON reports generated-only configuration", async () => {
         "install",
         "--agent",
         "openclaw",
+        "--transport", "stdio",
         "--dry-run",
         "--json",
         "--home",

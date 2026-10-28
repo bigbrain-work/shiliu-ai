@@ -222,7 +222,8 @@ try {
   $currentNpmLog = Get-Content -LiteralPath $currentNpm.LogPath -Raw
   Assert-True ($currentNpmLog -notmatch 'npm@9\.9\.4') 'Current npm must not be downgraded to the compatibility release.'
   Assert-True ($currentNpmLog -match '@bigbrain-work/mcp-connect@latest --prefer-online') 'Current npm path must install the online latest CLI.'
-  Assert-True ($currentNpmLog -match 'shiliu doctor --transport stdio --standard-only --prepare --json') 'Installer must verify an actual MCP handshake after checking the version.'
+  Assert-True ($currentNpmLog -match 'shiliu install --agent codex --transport http --dry-run --json') 'Optional CLI must verify remote configuration without keyring login.'
+  Assert-True ($currentNpmLog -notmatch 'shiliu doctor|shiliu login') 'Optional CLI installation must not start stdio or local QR login.'
 
   $handshakeFailure = Invoke-InstallerCase 'handshake-failure' $node22 $npmCurrent $shiliuHandshakeFailure
   Assert-True ($handshakeFailure.ExitCode -ne 0) 'A failed handshake must fail installation even when the version is valid.'
@@ -254,8 +255,8 @@ try {
   Assert-True ($versionFailure.Output -notmatch 'CLI installed') 'A failed version check must not report installation success.'
 
   $oldCli = Invoke-InstallerCase 'old-cli' $node22 $npmCurrent $shiliuTooOld
-  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.3.12 must fail installation.'
-  Assert-True ($oldCli.Output -match '1\.3\.12 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
+  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.4.0 must fail optional CLI installation.'
+  Assert-True ($oldCli.Output -match '1\.4\.0 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
   Assert-True ($oldCli.Output -notmatch 'CLI installed') 'An old CLI must not report installation success.'
 
   $unparseableCli = Invoke-InstallerCase 'unparseable-cli' $node22 $npmCurrent $shiliuUnparseable

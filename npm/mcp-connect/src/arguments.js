@@ -68,8 +68,11 @@ export function parseCliArguments(args) {
       throw new Error("doctor 当前仅支持 --transport stdio");
     }
   }
-  if (command !== "doctor" && parsed.values.transport !== undefined) {
-    throw new Error("--transport 仅适用于 shiliu doctor");
+  if (!["doctor", "install"].includes(command) && parsed.values.transport !== undefined) {
+    throw new Error("--transport 仅适用于 shiliu doctor 或 install");
+  }
+  if (command === "install" && parsed.values.transport !== undefined && !["http", "stdio"].includes(parsed.values.transport)) {
+    throw new Error("install --transport 必须是 http 或 stdio");
   }
   const launchOptions = ["launch-file", "node-path", "npm-cli", "npm-cache", "cache-entry"];
   if (!["doctor", "repair"].includes(command) && launchOptions.some((key) => parsed.values[key] !== undefined)) {
@@ -148,7 +151,7 @@ export function parseCliArguments(args) {
     noWait: parsed.values["no-wait"],
     wait: parsed.values.wait,
     force: parsed.values.force,
-    transport: parsed.values.transport || "stdio",
+    transport: parsed.values.transport || (command === "install" ? "http" : "stdio"),
     toolName: command === "call" ? subcommand : undefined,
     argumentsJson: parsed.values.args,
     argumentsFile: parsed.values["args-file"],

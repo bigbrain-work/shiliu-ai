@@ -17,7 +17,7 @@ test("defaults to smart install", () => {
     noWait: false,
     wait: false,
     force: false,
-    transport: "stdio",
+    transport: "http",
     toolName: undefined,
     argumentsJson: undefined,
     argumentsFile: undefined,
