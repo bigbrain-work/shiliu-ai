@@ -7,6 +7,7 @@ import { parseCliArguments } from "./arguments.js";
 import { formatCliErrorPayload } from "./cli-errors.js";
 import {
   configureAgent,
+  existingServerEntry,
   stdioConfigurationCandidates,
   remoteServerDefinition,
 } from "./configurators.js";
@@ -608,46 +609,63 @@ async function install({
   tokenStore,
   json,
   transport = "http",
+  transportExplicit = false,
 }) {
   // Configuration never requires CLI/keyring authentication. HTTP credentials belong
   // to the host; legacy stdio can bootstrap its own login tools without credentials.
+  const existing = Object.fromEntries(SUPPORTED_AGENTS.map((name) => [name, existingServerEntry(name, { home })]));
+  const legacyStdioPresent = Object.values(existing).some((entry) => entry?.transport === "stdio");
+  // Users who already rely on the stdio bridge keep its behaviour (shared CLI login) for new clients too.
+  if (!transportExplicit && legacyStdioPresent) transport = "stdio";
   const requestedAgent = agent === "auto" ? undefined : agent;
   if (requestedAgent && !SUPPORTED_AGENTS.includes(requestedAgent)) {
     const result = printGenericInstructions(requestedAgent, { dryRun, json, transport, url });
-    if (json) printJson({ status: "configuration_generated", results: [result] });
+    if (json) printJson({ status: "configuration_generated", legacy_stdio_present: legacyStdioPresent, results: [result] });
     return;
   }
 
+  // A configured client without its CLI on PATH (for example a desktop app) still has an entry to preserve.
   const agents = requestedAgent
     ? [requestedAgent]
-    : await detectInstalledAgents({ home });
+    : [...new Set([...await detectInstalledAgents({ home }), ...(transportExplicit ? [] : SUPPORTED_AGENTS.filter((name) => existing[name]))])];
   if (agents.length === 0) {
     const result = printGenericInstructions("当前客户端", { dryRun, json, transport, url });
-    if (json) printJson({ status: "configuration_generated", results: [result] });
+    if (json) printJson({ status: "configuration_generated", legacy_stdio_present: legacyStdioPresent, results: [result] });
     return;
   }
   const results = [];
   for (const detectedAgent of agents) {
-    results.push(await configureAgent(detectedAgent, { dryRun, home, transport, url }));
+    results.push(await configureAgent(detectedAgent, { dryRun, home, transport, url, transportExplicit }));
   }
+  const preserved = results.filter((result) => result.configuration_state === "existing_preserved");
+  const allPreserved = preserved.length === results.length;
   if (json) {
     printJson({
-      status: dryRun ? "dry_run" : "configured",
+      status: allPreserved ? "existing_preserved" : dryRun ? "dry_run" : "configured",
       transport,
       authentication: transport === "http" ? "oauth" : "bridge_login",
-      next_action: "reload_then_authorize_and_verify_native_balance",
-      onboarding: onboardingState({ mcp: results.some(result => result.reload_required) ? "awaiting_reload" : "not_configured" }),
+      next_action: allPreserved ? "verify_existing_connection" : "reload_then_authorize_and_verify_native_balance",
+      onboarding: onboardingState({ mcp: allPreserved ? "existing" : results.some(result => result.reload_required) ? "awaiting_reload" : "not_configured" }),
       reload_required: results.some((result) => result.reload_required),
+      legacy_stdio_present: legacyStdioPresent,
       results,
     });
     return;
   }
+  for (const result of preserved) {
+    console.log(`${result.agent} 已有 ${SERVER_NAME} 配置（${result.existing_transport}），已保留，未做修改：${result.config_path}`);
+  }
+  const changed = results.filter((result) => result.configuration_state !== "existing_preserved");
+  if (changed.length === 0) {
+    console.log("现有连接方式不变。如连接异常，请按 https://bigbrain.work/shiliuAI/recovery.txt 排查，不要重新安装。");
+    return;
+  }
   console.log(
     dryRun
-      ? `检查完成：将为 ${agents.join("、")} 配置 ${MCP_URL}，未写入文件。`
-      : `配置已写入：${agents.join("、")}。请重连客户端中的 MCP，完成授权，再通过原生 MCP 查询免费余额。CLI 状态不代表客户端连接状态。`,
+      ? `检查完成：将为 ${changed.map((result) => result.agent).join("、")} 配置 ${MCP_URL}，未写入文件。`
+      : `配置已写入：${changed.map((result) => result.agent).join("、")}。请重连客户端中的 MCP，完成授权，再通过原生 MCP 查询免费余额。CLI 状态不代表客户端连接状态。`,
   );
-  for (const result of results) {
+  for (const result of changed) {
     console.log(`${result.agent} 配置位置：${result.config_path}`);
   }
 }
@@ -811,5 +829,6 @@ export async function runCli(argv = process.argv.slice(2)) {
     tokenStore,
     json: options.json,
     transport: options.transport,
+    transportExplicit: options.transportExplicit,
   });
 }

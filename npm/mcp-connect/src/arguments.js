@@ -152,6 +152,7 @@ export function parseCliArguments(args) {
     wait: parsed.values.wait,
     force: parsed.values.force,
     transport: parsed.values.transport || (command === "install" ? "http" : "stdio"),
+    transportExplicit: parsed.values.transport !== undefined,
     toolName: command === "call" ? subcommand : undefined,
     argumentsJson: parsed.values.args,
     argumentsFile: parsed.values["args-file"],

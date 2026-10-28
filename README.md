@@ -52,7 +52,7 @@ MCP 成功后绝不获取 API Key。仅确认客户端接入失败时，另行�
 - 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
 - Windows 安装问题与发布验收：`docs/windows-install-acceptance.md`
 - CLI 与官网安装文件发布流程：`RELEASE_CLI.md`
-- 各历史版本变更见 `docs/cli-<版本>.md`；当前 OAuth 接入候选为 1.4.0，尚未发布。
+- 各历史版本变更见 `docs/cli-<版本>.md`；1.4.0 已于 2026-10-28 发布，存量兼容修复候选为 1.4.1（未发布）。
 
 ## 更新边界
 

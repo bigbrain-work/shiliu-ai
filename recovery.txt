@@ -1,6 +1,9 @@
 # Shiliu AI connection recovery
 
-Installation guide: https://bigbrain.work/shiliuAI/install.txt
+Stdio bridge guide (existing installations): https://bigbrain.work/shiliuAI/install-stdio.txt
+Remote OAuth installation guide: https://bigbrain.work/shiliuAI/install.txt
+
+This procedure recovers the local stdio bridge. Step and Layer references below are sections of install-stdio.txt. For a remote HTTP entry with OAuth, reconnect or use the client's Authenticate action (install.txt section 2). Never convert an existing entry to the other connection type, remove it, or collect an API key as a recovery step.
 
 ## Recovery: Diagnose and recover a failed connection
 
@@ -10,14 +13,14 @@ This is an Agent-facing recovery procedure for an existing installation, not a r
 
 Identify whether failure occurs before the CLI starts, during local stdio initialize, while checking login, while connecting to the remote service, or only while loading tools into the Agent. Record the current Agent's documented MCP command/args, transport, Node executable/version, npm-cli.js, npm cache, and configuration source when accessible. A healthy terminal installation may differ from the installation launched by the Agent. Do not guess private runtime paths or modify opaque application storage.
 
-For local stdio (Layers B/C), run these separately and record each exit code. On Windows PowerShell, use `shiliu.cmd` if its `.ps1` wrapper is blocked:
+For local stdio (install-stdio.txt Layers B/C), run these separately and record each exit code. On Windows PowerShell, use `shiliu.cmd` if its `.ps1` wrapper is blocked:
 
 ```text
 shiliu --version
 shiliu doctor --transport stdio --json
 ```
 
-CLI 1.3.12 or newer is required for independent dependency diagnostics and targeted repair. If older, update only the CLI using Step 2, then resume this recovery procedure; do not reinstall Skills, overwrite other MCP entries, or require login just to diagnose stdio. `--version` alone does not check dependencies. First inspect an existing failure without `--prepare`; preparation may download/update the package and is a separate recovery action.
+CLI 1.3.12 or newer is required for independent dependency diagnostics and targeted repair. If older, update only the CLI using install-stdio.txt Step 2, then resume this recovery procedure; do not reinstall Skills, overwrite other MCP entries, or require login just to diagnose stdio. `--version` alone does not check dependencies. First inspect an existing failure without `--prepare`; preparation may download/update the package and is a separate recovery action.
 
 If the Agent uses another runtime or cache, repeat doctor with that verified context and, when available, its documented credential-free JSON configuration:
 
@@ -34,26 +37,26 @@ Use Shiliu's safe log at `~/.shiliu-ai/logs/mcp-diagnostics.jsonl` and the clien
 
 | Evidence | Agent action |
 | --- | --- |
-| Command execution blocked before `shiliu` starts, no Node/npm, or the client has no local stdio capability | Handle the current client's execution/capability issue through its documented mechanism. Report what could not run. Do not disable built-in security hooks or treat this as a Shiliu login/cache fault. Follow Layers A/D/E as supported. |
+| Command execution blocked before `shiliu` starts, no Node/npm, or the client has no local stdio capability | Handle the current client's execution/capability issue through its documented mechanism. Report what could not run. Do not disable built-in security hooks or treat this as a Shiliu login/cache fault. Follow install-stdio.txt Layers A/D/E as supported. |
 | Exit 2 / `CONFIG_INVALID`, or wrong command/args/transport | Compare with the generated Shiliu stdio definition and correct only this MCP entry through the client's documented mechanism. Preserve other entries and credentials. |
 | Exit 3 / `RUNTIME_UNAVAILABLE` with `DEPENDENCY_INCOMPLETE`, or captured missing-module evidence in the actual Shiliu installation | Identify the exact failed install. For an exclusive Shiliu `_npx` entry, use 7.3. For a damaged global install, update/reinstall the official CLI in that runtime. Missing Ajv files do not imply that Node 22 is unsupported. |
 | `NODE_VERSION_UNSUPPORTED` | Correct the actual launching Node runtime to the CLI's declared minimum, Node 18.14.1. Direct Skill installation uses the same minimum. |
 | `NATIVE_DEPENDENCY_UNAVAILABLE` or `RUNTIME_LOAD_FAILED` | Inspect actual OS/architecture/runtime, install path, and the safe original error code. Reinstall the matching official CLI where evidence supports it. Do not assume a dependency-cache repair or repeated scan will fix every runtime failure. |
 | Initialize timeout with evidence of first-time npm download/extraction, or `NPM_PREPARE_FAILED` | Check registry/network and the selected runtime/cache. When appropriate, run the same doctor command with `--prepare` once to finish download/extraction before the handshake deadline, then verify initialize + tools/list. Do not blindly loop retries. |
 | `REPAIR_IN_PROGRESS`, `REPAIR_ALREADY_RUNNING`, or `MCP_STILL_RUNNING` | Wait for the active repair or stop this Shiliu MCP entry through the client before repair. Never remove a live owner's lock or terminate unrelated Agent/Node processes. An interrupted lock requires manual inspection. |
-| Local initialize succeeds, three bootstrap tools, `LOGIN_REQUIRED` or `login_required` | MCP is connected; authentication is pending. Use Step 4's QR login, then refresh tools/list. Do not repair the cache merely because business tools are absent. |
-| `AUTH_EXPIRED` | Run `shiliu status` or `shiliu_connection_status` to check/refresh stored authorization. If explicitly rejected or still expired, use Step 4 to log in again; never insert a token into MCP configuration. |
+| Local initialize succeeds, three bootstrap tools, `LOGIN_REQUIRED` or `login_required` | MCP is connected; authentication is pending. Use install-stdio.txt Step 4's QR login, then refresh tools/list. Do not repair the cache merely because business tools are absent. |
+| `AUTH_EXPIRED` | Run `shiliu status` or `shiliu_connection_status` to check/refresh stored authorization. If explicitly rejected or still expired, use install-stdio.txt Step 4 to log in again; never insert a token into MCP configuration. |
 | `CREDENTIAL_UNAVAILABLE` | Check whether CLI and MCP share the same OS user and accessible system credential store. Do not clear credentials as a generic fix. |
 | `REMOTE_UNAVAILABLE` | Check remote reachability/network and retry status after recovery. Preserve login and MCP configuration; a network failure does not establish that authorization is invalid. |
 | Doctor passes in the actual launch context but native Agent tools remain absent | Check this MCP entry's enable/trust state through the current client's documented UI, then reconnect/reload and verify native discovery. A local probe does not prove the Agent loaded the entry. |
-| `PROTOCOL_ERROR` | Check the documented transport and duplex stdio launch, including the Windows cmd definition in Step 5. Preserve protocol stdout; do not add debugging text there. |
+| `PROTOCOL_ERROR` | Check the documented transport and duplex stdio launch, including the Windows cmd definition in install-stdio.txt Step 5. Preserve protocol stdout; do not add debugging text there. |
 | Exit 4 / `INTERNAL_ERROR`, or unresolved failure after the matching remedy | Reconnect once if appropriate, then report safe version/runtime/stage/error evidence for support. Do not claim a root cause without evidence or repeatedly reinstall/scan. |
 
 Fatal startup exits are 2/3/4; normal shutdown is 0. Login, authorization, credential, and remote-network states normally keep the local bridge connected. Distinguish those states from a fatal startup failure.
 
 ### 7.3 Repair only a confirmed damaged extraction
 
-Use the exact cache entry resolved from the failed child installation or captured stderr, not a path or hash copied from another user's machine. Confirm that its root manifest belongs exclusively to `@bigbrain-work/mcp-connect`. First stop/disable this entry's automatic launch through the client, then run the repair dry-run and actual repair separately using the same verified Node/npm/cache, as shown in Step 5.
+Use the exact cache entry resolved from the failed child installation or captured stderr, not a path or hash copied from another user's machine. Confirm that its root manifest belongs exclusively to `@bigbrain-work/mcp-connect`. First stop/disable this entry's automatic launch through the client, then run the repair dry-run and actual repair separately using the same verified Node/npm/cache, as shown in install-stdio.txt Step 5.
 
 Require dry-run success before repair. Keep the backup, credentials, other package entries, and npm content cache. Repair reinstalls the original unversioned package once and verifies both the rebuilt entry and the selected launch. If reinstall/verification fails, report the error and retained backup; do not delete the whole cache, silently restore the damaged directory, remove a live lock, or retry indefinitely. If `status=repaired`, require both verification results to pass and honor `reload_required`; the client still needs to reconnect.
 

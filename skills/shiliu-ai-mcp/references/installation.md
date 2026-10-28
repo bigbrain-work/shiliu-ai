@@ -1,6 +1,13 @@
 # Installation and connection
 
-Read the [fixed installation guide](https://bigbrain.work/shiliuAI/install.txt) and
+First check for an existing shiliu_mcp entry. If one exists (stdio bridge or remote),
+keep it unchanged: never add, replace, remove or convert it, never start OAuth, HTTP
+fallback or API-key collection for it. `codex mcp add` overwrites same-name entries.
+Verify with native get_account_balance; a failing stdio bridge follows
+[recovery.txt](https://bigbrain.work/shiliuAI/recovery.txt) and the existing
+[stdio guide](https://bigbrain.work/shiliuAI/install-stdio.txt) with its original login.
+
+For a new installation, read the [fixed installation guide](https://bigbrain.work/shiliuAI/install.txt) and
 [state contract](https://bigbrain.work/shiliuAI/onboarding.json). Never invent an
 installer, finish script, undocumented client configuration or private-store edit.
 

@@ -66,7 +66,7 @@ export async function checkPublicDistribution({
     const built = publicAssets.skillDistribution;
     const verified = await verifySkillDistribution(distributionDirectory);
 
-    for (const fileName of ["install.txt", "install.sh", "install.ps1", "recovery.txt"]) {
+    for (const fileName of publicAssets.installFiles) {
       await verifyPublicFile(
         publicBaseUrl,
         fileName,

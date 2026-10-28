@@ -41,10 +41,13 @@ test('remote install defaults contain no local runtime or credentials', () => {
   for (const url of ['http://insecure.example/mcp', 'https://user:key@example.com/mcp', 'https://example.com/mcp?token=secret'])
     assert.throws(() => remoteServerDefinition(url));
 });
-test('remote CLI configuration never needs CLI login or access to the keyring', () => {
-  const result = spawnSync(process.execPath, ['bin/shiliu.js', 'install', '--agent', 'other', '--json'], {
-    encoding: 'utf8', env: { ...process.env, SHILIU_AI_API_KEY: '' }, timeout: 10000,
+test('remote CLI configuration never needs CLI login or access to the keyring', async () => {
+  // Isolated HOME: an existing stdio entry on the test machine would correctly keep stdio.
+  const home = await mkdtemp(path.join(os.tmpdir(), 'shiliu-remote-cli-'));
+  const result = spawnSync(process.execPath, ['bin/shiliu.js', 'install', '--agent', 'other', '--json', '--home', home], {
+    encoding: 'utf8', env: { ...process.env, CODEX_HOME: path.join(home, '.codex'), SHILIU_AI_API_KEY: '' }, timeout: 10000,
   });
+  await rm(home, { recursive: true, force: true });
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.results[0].transport, 'http');

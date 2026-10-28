@@ -166,6 +166,17 @@ echo 9.9.9-test
 exit /b 0
 '@
 
+$shiliuLegacyStdio = @'
+@echo off
+echo shiliu %*>>"%SHILIU_INSTALL_TEST_LOG%"
+if "%~1"=="install" (
+  echo {"status": "existing_preserved", "legacy_stdio_present": true}
+  exit /b 0
+)
+echo 9.9.9-test
+exit /b 0
+'@
+
 $shiliuFailure = @'
 @echo off
 echo version failed 1>&2
@@ -225,6 +236,13 @@ try {
   Assert-True ($currentNpmLog -match 'shiliu install --agent codex --transport http --dry-run --json') 'Optional CLI must verify remote configuration without keyring login.'
   Assert-True ($currentNpmLog -notmatch 'shiliu doctor|shiliu login') 'Optional CLI installation must not start stdio or local QR login.'
 
+  $legacy = Invoke-InstallerCase 'legacy-stdio' $node22 $npmCurrent $shiliuLegacyStdio
+  Assert-True ($legacy.ExitCode -eq 0) "Existing stdio update path failed: $($legacy.Output)"
+  $legacyLog = Get-Content -LiteralPath $legacy.LogPath -Raw
+  Assert-True ($legacyLog -match 'shiliu doctor --transport stdio --standard-only --prepare --json') 'An existing stdio bridge must keep its original launch verification.'
+  Assert-True ($legacyLog -notmatch 'shiliu install --agent codex --transport http|shiliu login') 'An existing stdio bridge must never be switched to remote OAuth or prompted to log in.'
+  Assert-True ($legacy.Output -match 'install-stdio\.txt') "An existing stdio bridge must be pointed to its own guide. Output: $($legacy.Output)"
+
   $handshakeFailure = Invoke-InstallerCase 'handshake-failure' $node22 $npmCurrent $shiliuHandshakeFailure
   Assert-True ($handshakeFailure.ExitCode -ne 0) 'A failed handshake must fail installation even when the version is valid.'
   Assert-True ($handshakeFailure.Output -notmatch 'CLI installed') 'A failed handshake must not report installation success.'
@@ -255,8 +273,8 @@ try {
   Assert-True ($versionFailure.Output -notmatch 'CLI installed') 'A failed version check must not report installation success.'
 
   $oldCli = Invoke-InstallerCase 'old-cli' $node22 $npmCurrent $shiliuTooOld
-  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.4.0 must fail optional CLI installation.'
-  Assert-True ($oldCli.Output -match '1\.4\.0 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
+  Assert-True ($oldCli.ExitCode -ne 0) 'A Shiliu CLI version below 1.4.1 must fail optional CLI installation.'
+  Assert-True ($oldCli.Output -match '1\.4\.1 or newer') "An old CLI must return actionable version guidance. Output: $($oldCli.Output)"
   Assert-True ($oldCli.Output -notmatch 'CLI installed') 'An old CLI must not report installation success.'
 
   $unparseableCli = Invoke-InstallerCase 'unparseable-cli' $node22 $npmCurrent $shiliuUnparseable
