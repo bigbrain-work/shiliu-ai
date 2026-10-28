@@ -8,6 +8,9 @@ export function onboardingState({ mcp = "not_configured", nativeBalance = false,
   const nativeReady = mcp === "connected" && nativeBalance && toolList && charged === false && consumedCredits === 0;
   if (nativeReady) return { state: "mcp_ready", installed: true, next: "finish", api_key_allowed: false,
     message: "安装已完成，可以正常使用。", optional_notice: optionalNotice };
+  // Existing entries keep their transport and login; failures go to recovery, never reinstall or fallback.
+  if (mcp === "existing") return { state: "existing_installation", installed: true,
+    next: "verify_existing_connection_or_follow_recovery", api_key_allowed: false };
   if (["awaiting_reload", "authorizing", "cancelled"].includes(mcp)) return { state: mcp, installed: false,
     next: mcp === "awaiting_reload" ? "reconnect_mcp" : mcp === "cancelled" ? "await_user_authorization" : "complete_browser_authorization",
     api_key_allowed: false };

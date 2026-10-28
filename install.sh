@@ -73,7 +73,17 @@ npm_global_install @bigbrain-work/mcp-connect@latest --prefer-online
 
 command -v shiliu >/dev/null 2>&1 || fail "The shiliu command is not on PATH. Open a new terminal and retry."
 shiliu_version=$(shiliu --version) || fail "shiliu --version returned a non-zero exit code. CLI installation could not be verified."
-require_minimum_version "$shiliu_version" 1 4 0 "Shiliu AI CLI"
+require_minimum_version "$shiliu_version" 1 4 1 "Shiliu AI CLI"
+
+# Existing stdio bridge users keep their original update verification; nothing is reconfigured.
+if shiliu install --dry-run --json 2>/dev/null | grep -q '"legacy_stdio_present": *true'; then
+  printf '%s\n' "Existing stdio bridge detected and preserved. Verifying the actual npx MCP launch (initialize + tools/list)..."
+  shiliu doctor --transport stdio --standard-only --prepare --json || fail "CLI launch verification failed. Repair the identified Shiliu npx entry before reconnecting; do not clear credentials."
+  printf '%s\n' "CLI installed. Version: $shiliu_version"
+  printf '%s\n' "Verified only this terminal runtime. If the Agent bundles another Node/npm, verify its launch configuration with doctor --launch-file and --node-path before enabling MCP."
+  printf '%s\n' "Your existing connection and login are unchanged. Continue with https://bigbrain.work/shiliuAI/install-stdio.txt; for failures use https://bigbrain.work/shiliuAI/recovery.txt"
+  return 0
+fi
 
 printf '%s\n' "Verifying optional CLI remote configuration without login or keyring access..."
 shiliu install --agent codex --transport http --dry-run --json || fail "Optional CLI verification failed. Existing remote MCP use is unaffected; do not clear credentials."

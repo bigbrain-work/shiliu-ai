@@ -2,9 +2,38 @@ import crossSpawn from "cross-spawn";
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import TOML from "@iarna/toml";
 
 import { PACKAGE_NAME, SERVER_NAME, MCP_URL } from "./constants.js";
 import { collectRuntimeDiagnostics } from "./runtime-diagnostics.js";
+
+export function agentConfigPath(agent, { home, env = process.env } = {}) {
+  const root = home || env.USERPROFILE || env.HOME;
+  if (agent === "codex") return path.join(env.CODEX_HOME || path.join(root, ".codex"), "config.toml");
+  if (agent === "claude") return path.join(root, ".claude.json");
+  if (agent === "cursor") return path.join(root, ".cursor", "mcp.json");
+  return null;
+}
+
+// An existing Shiliu entry belongs to the user's working installation. Without an explicit
+// --transport, install reports it and never replaces it. Unreadable files count as existing.
+export function existingServerEntry(agent, options = {}) {
+  const configPath = agentConfigPath(agent, options);
+  if (!configPath) return null;
+  let content;
+  try { content = readFileSync(configPath, "utf8"); }
+  catch (error) { return error.code === "ENOENT" ? null : { config_path: configPath, transport: "unknown" }; }
+  let server;
+  try {
+    const parsed = agent === "codex" ? TOML.parse(content) : JSON.parse(content);
+    server = (agent === "codex" ? parsed.mcp_servers : parsed.mcpServers)?.[SERVER_NAME];
+  } catch {
+    return content.includes(SERVER_NAME) ? { config_path: configPath, transport: "unknown" } : null;
+  }
+  if (!server) return null;
+  const remote = typeof server.url === "string" || ["http", "sse", "streamable-http"].includes(server.type);
+  return { config_path: configPath, transport: remote ? "http" : "stdio" };
+}
 
 export function stdioServerDefinition(platform = process.platform) {
   if (platform === "win32") {
@@ -315,6 +344,11 @@ export async function configureCursor({ home, dryRun = false, transport, url } =
 }
 
 export async function configureAgent(agent, options) {
+  if (!options.transportExplicit) {
+    const existing = existingServerEntry(agent, options);
+    if (existing) return { agent, configuration_state: "existing_preserved", existing_transport: existing.transport,
+      config_path: existing.config_path, reload_required: false };
+  }
   if (agent === "codex") return configureCodex(options);
   if (agent === "claude") return configureClaude(options);
   if (agent === "cursor") return configureCursor(options);

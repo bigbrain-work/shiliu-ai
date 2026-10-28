@@ -143,7 +143,22 @@ if ($install.ExitCode -ne 0) {
 
 $shiliuCommand = Resolve-NativeCommand @('shiliu.cmd', 'shiliu') 'The shiliu command is not on PATH. Open a new terminal and retry.'
 $shiliuVersion = Invoke-NativeVersion $shiliuCommand @('--version') 'shiliu --version returned a non-zero exit code. CLI installation could not be verified.'
-Assert-MinimumVersion $shiliuVersion '1.4.0' 'Shiliu AI CLI'
+Assert-MinimumVersion $shiliuVersion '1.4.1' 'Shiliu AI CLI'
+
+# Existing stdio bridge users keep their original update verification; nothing is reconfigured.
+$probe = Invoke-NativeSafely $shiliuCommand @('install', '--dry-run', '--json')
+if ((@($probe.Output) -join "`n") -match '"legacy_stdio_present":\s*true') {
+  Write-Host 'Existing stdio bridge detected and preserved. Verifying the actual npx MCP launch (initialize + tools/list)...'
+  $doctor = Invoke-NativeSafely $shiliuCommand @('doctor', '--transport', 'stdio', '--standard-only', '--prepare', '--json')
+  $doctor.Output | ForEach-Object { Write-Host $_ }
+  if ($null -eq $doctor.ExitCode -or $doctor.ExitCode -ne 0) {
+    throw 'CLI launch verification failed. Check the diagnostic error and repair the identified Shiliu npx entry before reconnecting. Do not clear credentials.'
+  }
+  Write-Host "CLI installed. Version: $shiliuVersion"
+  Write-Host 'Verified only this terminal runtime. If the Agent bundles another Node/npm, verify its launch configuration with doctor --launch-file and --node-path before enabling MCP.'
+  Write-Host 'Your existing connection and login are unchanged. Continue with https://bigbrain.work/shiliuAI/install-stdio.txt; for failures use https://bigbrain.work/shiliuAI/recovery.txt'
+  return
+}
 
 Write-Host 'Verifying optional CLI remote configuration without login or keyring access...'
 $doctor = Invoke-NativeSafely $shiliuCommand @('install', '--agent', 'codex', '--transport', 'http', '--dry-run', '--json')
