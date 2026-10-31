@@ -75,6 +75,8 @@ try {
         $fixture[$case] = $false
     }
     Write-Output "PASS: $count custom Skill installer checks"
+    # Expected failing child-script cases set LASTEXITCODE; do not leak that code to the CI shell.
+    $global:LASTEXITCODE = 0
 } finally {
     $resolved = [IO.Path]::GetFullPath($sandbox)
     $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
