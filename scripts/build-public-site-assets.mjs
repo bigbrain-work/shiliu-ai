@@ -7,7 +7,7 @@ import { buildSkillDistribution, collectSkillFiles } from "./build-skill-distrib
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = path.resolve(path.dirname(scriptPath), "..");
-const installFiles = ["install.txt", "install-stdio.txt", "install.sh", "install.ps1", "recovery.txt", "connect-mcp.ps1", "connect-http.ps1", "invoke-http.ps1", "install-skill.ps1", "onboarding.json"];
+const installFiles = ["install.txt", "install-stdio.txt", "install.sh", "install.ps1", "recovery.txt", "connect-mcp.ps1", "connect-mcp.sh", "connect-http.ps1", "invoke-http.ps1", "install-skill.ps1", "onboarding.json"];
 
 function assertSafeOutputDirectory(outputDirectory) {
   const resolved = path.resolve(outputDirectory);
