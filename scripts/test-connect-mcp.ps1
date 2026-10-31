@@ -5,6 +5,30 @@ $savedCodexHome = $env:CODEX_HOME
 $official = 'https://api.bigbrain.work/shiliu/mcp'
 $fixtureKey = 'sk-fixture-key-123'
 $fixture = @{}
+# Windows PowerShell 5.1 raises HTTP errors as a WebException whose ErrorDetails is empty and whose
+# JSON body is only readable from Response.GetResponseStream(); these types reproduce that shape.
+Add-Type -TypeDefinition @'
+public class FakeHttpResponse {
+    public int StatusCode;
+    private readonly byte[] body;
+    public FakeHttpResponse(int status, string json) { StatusCode = status; body = System.Text.Encoding.UTF8.GetBytes(json); }
+    public System.IO.Stream GetResponseStream() { return new System.IO.MemoryStream(body); }
+}
+public class FakeWebException : System.Exception {
+    public FakeHttpResponse Response;
+    public FakeWebException(int status, string json) : base("The remote server returned an error.") { Response = new FakeHttpResponse(status, json); }
+}
+'@
+function Throw-HttpError([string]$OAuthError) {
+    $json = '{"error":"' + $OAuthError + '"}'
+    if ($fixture.errorStyle -eq 'ps7') {
+        # PowerShell 7 style: the body is in ErrorDetails.
+        $record = [Management.Automation.ErrorRecord]::new([Exception]::new('Response status code does not indicate success.'), 'WebCmdletWebResponseException', 'InvalidOperation', $null)
+        $record.ErrorDetails = [Management.Automation.ErrorDetails]::new($json)
+        throw $record
+    }
+    throw [Management.Automation.ErrorRecord]::new([FakeWebException]::new(400, $json), 'WebCmdletWebResponseException', 'InvalidOperation', $null)
+}
 function Get-Command {
     param($Name, $ErrorAction)
     # Resolve only the mock functions. No real client executable can run in this harness.
@@ -43,10 +67,15 @@ function Invoke-RestMethod {
     param($Method, $Uri, $ContentType, $TimeoutSec, $Body, $Headers)
     $fixture.http.Add([string]$Uri) | Out-Null
     if ($Uri -like '*/oauth/http-fallback') {
-        if (($Body | ConvertFrom-Json).mcp_failure -ne 'oauth_failed') { throw 'wrong_mcp_failure' }
+        if (($Body | ConvertFrom-Json).mcp_failure -ne $fixture.expectedFailure) { throw 'wrong_mcp_failure' }
         return [pscustomobject]@{ request_id = 'r'; authorization_url = $fixture.consentUrl; expires_in = 600 }
     }
-    if ($Uri -like '*/oauth/http-fallback/token') { return [pscustomobject]@{ api_key = $fixtureKey } }
+    if ($Uri -like '*/oauth/http-fallback/token') {
+        $fixture.polls++
+        if ($fixture.polls -le $fixture.pendingPolls) { Throw-HttpError 'authorization_pending' }
+        if ($fixture.tokenError) { Throw-HttpError $fixture.tokenError }
+        return [pscustomobject]@{ api_key = $fixtureKey }
+    }
     if ($Uri -ne "$official/k/$fixtureKey") { throw 'unexpected_url' }
     if ($Body -like '*tools/list*') {
         return [pscustomobject]@{ result = [pscustomobject]@{ tools = @([pscustomobject]@{ name = $fixture.balanceTool }) } }
@@ -60,6 +89,7 @@ function Run-Case([string]$Name, [hashtable]$Options, [string]$Client = 'codex',
     $script:fixture = @{ exists = $false; transport = 'streamable_http'; url = $official; headers = $null;
         auth = 'not_logged_in'; addExit = 0; loginExit = 0; claudeCli = $false; claudeType = 'http';
         consentUrl = 'https://bigbrain.work/shiliuai/agent-authorize?request=r'; balanceTool = 'get_account_balance';
+        polls = 0; pendingPolls = 2; tokenError = $null; errorStyle = 'ps51'; expectedFailure = 'oauth_failed';
         calls = [Collections.Generic.List[string]]::new(); http = [Collections.Generic.List[string]]::new();
         browser = [Collections.Generic.List[string]]::new() }
     foreach ($key in $Options.Keys) { $fixture[$key] = $Options[$key] }
@@ -98,13 +128,22 @@ try {
     Assert-Case (Run-Case 'add error after save no repeat' @{ addExit = 1 }) 'oauth_failed' 0 1 | Out-Null
     foreach ($client in @('workbuddy', 'doubao')) {
         $case = Assert-Case (Run-Case $client @{} -Client $client) 'configuration_generated' 0 0
-        Assert-True ($case.Report.fallback_url_template -like "$official/k/*") "$client fallback template"
+        Assert-True ($case.Report.fallback_url_template -like "$official/k/*" -and -not $case.Report.transport) "$client fallback template without generic transport"
     }
-    $count = 14
+    $case = Run-Case 'workbuddy config' @{} -Client 'workbuddy'
+    Assert-True ($case.Report.client_config.mcpServers.shiliu_mcp.type -eq 'streamableHttp' -and $case.Report.client_config.mcpServers.shiliu_mcp.url -eq $official) 'WorkBuddy client_config uses streamableHttp'
+    $case = Run-Case 'doubao form' @{} -Client 'doubao'
+    Assert-True ($case.Report.ui_form.transport -eq 'HTTP' -and $case.Report.ui_form.url -eq $official) 'Doubao ui_form fields'
+    $count = 16
 
     # Personal URL path.
+    # Every personal-URL case first receives two authorization_pending polls (Windows PowerShell 5.1 shape).
     $case = Assert-Case (Run-Case 'personal URL for new Codex entry' @{} -Personal) 'awaiting_reload' 0 1
     Assert-True ($case.Url -eq "$official/k/$fixtureKey" -and $case.Browser.Count -eq 1 -and $case.Report.connection -eq 'personal_url') 'new personal URL written after consent'
+    Assert-True (@($case.Http | Where-Object { $_ -like '*/token' }).Count -eq 3) 'pending polls tolerated before the key arrives'
+    Assert-Case (Run-Case 'personal URL with PowerShell 7 error shape' @{ errorStyle = 'ps7' } -Personal) 'awaiting_reload' 0 1 | Out-Null
+    $case = Assert-Case (Run-Case 'personal URL denied on website' @{ tokenError = 'access_denied' } -Personal) 'personal_url_incomplete' 0 0
+    Assert-True ($case.Report.phase -eq 'authorization' -and $case.Report.oauth_error -eq 'access_denied' -and $case.Report.http_status -eq 400) 'denial reported with its OAuth error code'
     $case = Assert-Case (Run-Case 'personal URL replaces failed OAuth entry' @{ exists = $true } -Personal) 'awaiting_reload' 0 1
     Assert-True ($case.Report.replaced_entry -eq $true) 'official entry replaced'
     Assert-Case (Run-Case 'personal URL replaces reset personal URL' @{ exists = $true; url = "$official/k/sk-old" } -Personal) 'awaiting_reload' 0 1 | Out-Null
@@ -119,8 +158,19 @@ try {
     Assert-True (@($case.Calls | Where-Object { $_ -like 'claude mcp remove shiliu_mcp --scope user' }).Count -eq 1) 'claude user entry removed before add'
     Assert-Case (Run-Case 'personal URL keeps Claude stdio' @{ claudeCli = $true; exists = $true; claudeType = 'stdio' } -Client 'claude' -Personal) 'existing_installation' 0 0 | Out-Null
     $case = Assert-Case (Run-Case 'personal URL without CLI is user-filled' @{} -Client 'workbuddy' -Personal) 'configuration_generated' 0 0
-    Assert-True ($case.Http.Count -eq 0 -and $case.Report.url_template -like "$official/k/*") 'GUI client gets template, no key handoff'
-    $count += 10
+    Assert-True ($case.Http.Count -eq 0 -and $case.Report.url_template -like "$official/k/*" -and
+        $case.Report.client_config.mcpServers.shiliu_mcp.url -like "$official/k/*") 'GUI client gets template, no key handoff'
+    $count += 12
+
+    # connect-http.ps1 shares the polling logic. A denial ends before any credential is stored.
+    $script:fixture.polls = 0; $script:fixture.pendingPolls = 2; $script:fixture.tokenError = 'access_denied'
+    $script:fixture.errorStyle = 'ps51'; $script:fixture.expectedFailure = 'connection_failed'
+    $script:fixture.http.Clear(); $script:fixture.browser.Clear()
+    $httpHelper = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../connect-http.ps1'))
+    $report = ((& $httpHelper -McpFailure connection_failed -ClientName Test 2>$null) -join "`n") | ConvertFrom-Json
+    Assert-True ($report.state -eq 'http_setup_incomplete' -and $report.oauth_error -eq 'access_denied' -and $report.credential_stored -eq $false -and
+        @($fixture.http | Where-Object { $_ -like '*/token' }).Count -eq 3) 'connect-http tolerates pending and reports the denial'
+    $count += 1
     Write-Output "PASS: $count mocked onboarding cases; no real client, network, credentials or browser used."
 } finally {
     $env:CODEX_HOME = $savedCodexHome

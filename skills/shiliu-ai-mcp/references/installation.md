@@ -29,6 +29,13 @@ configuration paths or equate ordinary Doubao chat with Doubao Work connectors.
 Reuse the client's complete authorization request; never construct a bare consent
 URL or manually handle PKCE/callback credentials. Keep unknown error stages unknown.
 
+Decide OAuth support from evidence each time (documented features, an authorization
+control, a browser prompt after adding); a bare 401 proves nothing. A client whose
+configuration accepts only URL/headers with no authorization control goes straight
+to the personal URL. Use the client's own field names (WorkBuddy mcp.json needs
+`"type":"streamableHttp"`); helper report fields are not configuration keys. Never
+ask the user to click a control they have not reported seeing.
+
 Attempt OAuth once. If it fails (helper state `oauth_failed`; cancellation is not
 failure), tell the user and switch to the personal URL in install.txt section 2b:
 `https://api.bigbrain.work/shiliu/mcp/k/<API Key>`. With a CLI run the fixed helper
@@ -42,6 +49,8 @@ Default CLI and Skill attempts are independent and bounded to one each. Failure
 must not block MCP. After native balance succeeds say “安装已完成，可以正常使用。”
 For optional failure add only “Skill / CLI 安装未成功，但不影响正常使用。”
 Never ask the user to repair these optional components before continuing.
+Then stop. Continue only with an unfinished request the user made in this
+conversation besides installation; never ask about or infer other tasks.
 
 After native MCP succeeds, do not acquire API keys or configure HTTP fallback.
 Only a confirmed client-side failure after one targeted repair permits fallback.

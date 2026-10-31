@@ -71,7 +71,8 @@ jobs:
           tarball="$(npm pack --silent)"
           cold_prefix="$(mktemp -d)"
           npm install --prefix "$cold_prefix" --engine-strict --no-fund "$PWD/$tarball"
-          npm audit --prefix "$cold_prefix" --audit-level=moderate
+          npm audit --prefix "$cold_prefix" --json > "$cold_prefix/audit.json" || true
+          node "$GITHUB_WORKSPACE/scripts/check-npm-audit.mjs" "$cold_prefix/audit.json"
           cold_cli="$cold_prefix/node_modules/.bin/shiliu"
           "$cold_cli" --version
           "$cold_cli" skill install --agent claude-code --scope user --dry-run --json --home "$cold_prefix/isolated-user"

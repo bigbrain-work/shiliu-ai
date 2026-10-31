@@ -29,6 +29,18 @@ case "$CLIENT" in codex|claude|cursor|workbuddy|doubao) ;; *) usage ;; esac
 
 notice() { printf '%s\n' "$1" >&2; }
 
+# Client-specific configuration in the client's own field names (JSON members, no braces). Report
+# fields such as transport describe the connection and must not be copied into a client config
+# (WorkBuddy needs type=streamableHttp, verified 2026-10-31).
+client_template() { # url
+  case "$CLIENT" in
+    workbuddy) printf '"client_config":{"mcpServers":{"shiliu_mcp":{"type":"streamableHttp","url":"%s"}}}' "$1" ;;
+    cursor) printf '"client_config":{"mcpServers":{"shiliu_mcp":{"url":"%s"}}}' "$1" ;;
+    doubao) printf '"ui_form":{"name":"shiliu_mcp","transport":"HTTP","url":"%s","custom_headers":"留空"}' "$1" ;;
+    *) printf '"server_name":"shiliu_mcp","transport":"http","url":"%s"' "$1" ;;
+  esac
+}
+
 # All report values are fixed strings or validated identifiers, so no JSON escaping is needed.
 emit() { printf '%s\n' "$1"; }
 
@@ -166,7 +178,9 @@ request_api_key() { # client name
     case "$API_KEY" in
       sk*) case "$API_KEY" in *[!A-Za-z0-9-]*) API_KEY=''; return 1 ;; esac; return 0 ;;
     esac
-    [ "$(json_string "$claim" error)" = authorization_pending ] || return 1
+    LAST_OAUTH_ERROR=$(json_string "$claim" error)
+    case "$LAST_OAUTH_ERROR" in *[!a-z_]*) LAST_OAUTH_ERROR='' ;; esac
+    [ "$LAST_OAUTH_ERROR" = authorization_pending ] || return 1
   done
   return 1
 }
@@ -183,7 +197,7 @@ verify_personal_url() { # url
 }
 
 personal_incomplete() { # phase, configuration_changed
-  emit "{\"state\":\"personal_url_incomplete\",\"phase\":\"$1\",\"connection\":\"personal_url\",\"configuration_changed\":$2,\"message\":\"专属地址接入未完成。authorization 阶段说明用户未在网页确认或已超时；verification 阶段说明地址验证失败，未写入任何配置。不要重置 API Key，也不要反复重试。\"}"
+  emit "{\"state\":\"personal_url_incomplete\",\"phase\":\"$1\",\"connection\":\"personal_url\",\"configuration_changed\":$2,\"oauth_error\":\"${LAST_OAUTH_ERROR:-}\",\"message\":\"专属地址接入未完成。authorization 阶段：access_denied 为用户拒绝，expired_request 为确认页超时，其他情况为用户未确认或网络错误；verification 阶段说明地址验证失败，未写入任何配置。不要重置 API Key，也不要反复重试。\"}"
   API_KEY=''
   exit 1
 }
@@ -191,7 +205,7 @@ personal_incomplete() { # phase, configuration_changed
 personal_url_setup() {
   if [ -z "$PROGRAM" ] || { [ "$CLIENT" != codex ] && [ "$CLIENT" != claude ]; }; then
     # No CLI: the user pastes the address into the client. Never collect the key in chat.
-    emit "{\"state\":\"configuration_generated\",\"next_action\":\"user_fills_personal_url\",\"connection\":\"personal_url\",\"server_name\":\"shiliu_mcp\",\"transport\":\"http\",\"url_template\":\"$PERSONAL_TEMPLATE\",\"message\":\"请用户本人在石榴官网账户页复制 API Key，在客户端连接器的地址栏填入 url_template（把尖括号部分换成 API Key），替换原来的石榴连接后保存，再告诉你已完成。不要让用户把 API Key 发到对话里。完成后用原生工具免费查询余额验证。\"}"
+    emit "{\"state\":\"configuration_generated\",\"next_action\":\"user_fills_personal_url\",\"connection\":\"personal_url\",\"url_template\":\"$PERSONAL_TEMPLATE\",$(client_template "$PERSONAL_TEMPLATE"),\"message\":\"请用户本人在石榴官网账户页复制 API Key，把已有石榴条目的地址改为 url_template（把尖括号部分换成 API Key），字段名按 client_config/ui_form，请求头留空，替换原地址而不是再加一条，保存后告诉你已完成。不要让用户把 API Key 发到对话里。完成后用原生工具免费查询余额验证。\"}"
     exit 0
   fi
   command -v curl >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 || personal_incomplete prerequisites false
@@ -255,11 +269,14 @@ if [ "$CLIENT" = codex ] && [ -n "$PROGRAM" ]; then
 elif [ "$CLIENT" = claude ] && [ -n "$PROGRAM" ]; then
   "$PROGRAM" mcp add --transport http --scope user shiliu_mcp "$ENDPOINT" 1>&2 || configuration_failed
   emit '{"state":"awaiting_reload","next_action":"reconnect_then_browser_oauth","fallback_command":"connect-mcp.sh --client claude --use-personal-url","message":"重连后在 /mcp 中完成石榴网页授权。授权失败时不要反复尝试，改用 fallback_command。"}'
-elif [ "$CLIENT" = workbuddy ]; then
-  emit "{\"state\":\"configuration_generated\",\"next_action\":\"use_client_connector_action\",\"server_name\":\"shiliu_mcp\",\"transport\":\"http\",\"url\":\"$ENDPOINT\",\"authentication\":\"oauth\",\"fallback_url_template\":\"$PERSONAL_TEMPLATE\",\"message\":\"优先使用 WorkBuddy 当前可用的连接器安装/连接操作，复用已有条目；如出现安装确认或需要认证，请用户只确认该提示或点击该连接器的“连接”，随后由客户端打开网页授权。网页授权失败时不要反复尝试：请用户本人在官网账户页复制 API Key，把连接器地址改为 fallback_url_template；不要让用户把 Key 发到对话里。\"}"
-elif [ "$CLIENT" = doubao ]; then
-  emit "{\"state\":\"configuration_generated\",\"next_action\":\"use_client_connector_action\",\"server_name\":\"shiliu_mcp\",\"transport\":\"http\",\"url\":\"$ENDPOINT\",\"authentication\":\"oauth\",\"fallback_url_template\":\"$PERSONAL_TEMPLATE\",\"message\":\"适用于豆包工作或具备连接器功能的电脑版。优先使用客户端当前可用的连接器操作，复用已有条目；如提示“连接器需要授权”，请用户点击“去授权”，随后完成网页授权。普通豆包聊天/API 的接入能力未据此确认。网页授权失败时不要反复尝试：请用户本人在官网账户页复制 API Key，把连接器地址改为 fallback_url_template；不要让用户把 Key 发到对话里。\"}"
+elif [ "$CLIENT" = workbuddy ] || [ "$CLIENT" = doubao ]; then
+  if [ "$CLIENT" = workbuddy ]; then
+    instruction='使用 WorkBuddy 的连接器安装/连接操作，或把 client_config 合并进用户级 mcp.json（保留其他条目，字段名以 client_config 为准）。如出现安装确认或“连接”，请用户只确认该提示，随后由客户端打开网页授权。'
+  else
+    instruction='适用于具备自定义连接器的豆包电脑版：请用户在豆包界面添加自定义连接器并按 ui_form 填写，入口以用户实际看到的为准，不要编造菜单路径。如提示“连接器需要授权”，请用户点击“去授权”。'
+  fi
+  emit "{\"state\":\"configuration_generated\",\"next_action\":\"use_client_connector_action\",\"authentication\":\"oauth\",\"fallback_url_template\":\"$PERSONAL_TEMPLATE\",$(client_template "$ENDPOINT"),\"message\":\"$instruction 没有授权入口、保存后只显示失败或 401、或网页授权失败时，不要反复尝试，也不要让用户点不存在的按钮：请用户本人在官网账户页复制 API Key，把同一条目的地址改为 fallback_url_template；不要让用户把 Key 发到对话里。\"}"
 else
   # Desktop clients do not necessarily ship a CLI on PATH. This is not a runtime failure.
-  emit "{\"state\":\"configuration_generated\",\"next_action\":\"use_documented_client_mcp_settings\",\"server_name\":\"shiliu_mcp\",\"transport\":\"http\",\"url\":\"$ENDPOINT\",\"authentication\":\"oauth\",\"fallback_url_template\":\"$PERSONAL_TEMPLATE\",\"message\":\"在客户端 MCP 设置中添加以上远程连接，再点击授权。无需安装 Node/npm。授权失败时改用 fallback_url_template，由用户本人填入 API Key。\"}"
+  emit "{\"state\":\"configuration_generated\",\"next_action\":\"use_documented_client_mcp_settings\",\"authentication\":\"oauth\",\"fallback_url_template\":\"$PERSONAL_TEMPLATE\",$(client_template "$ENDPOINT"),\"message\":\"用客户端自己的字段名添加以上远程连接（有 client_config 时照它填写），再按客户端提示授权。无需安装 Node/npm。没有授权入口或授权失败时改用 fallback_url_template，由用户本人填入 API Key。\"}"
 fi

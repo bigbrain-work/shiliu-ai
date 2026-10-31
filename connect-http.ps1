@@ -11,6 +11,35 @@ $ProgressPreference = 'SilentlyContinue'
 $api = 'https://api.bigbrain.work/shiliu'
 $key = $null
 $phase = 'authorization'
+$lastHttp = @{ Status = $null; Error = $null }
+
+# Windows PowerShell 5.1 often leaves ErrorDetails empty for HTTP errors; the JSON body is then only
+# in the WebException response stream. PowerShell 7 fills ErrorDetails. Only a fixed OAuth error
+# token and the HTTP status are kept, never the raw body.
+function Get-HttpErrorInfo($ErrorRecord) {
+    $status = $null; $body = $null
+    $response = $ErrorRecord.Exception.Response
+    try {
+        if ($response) { try { $status = [int]$response.StatusCode } catch { } }
+        if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) { $body = $ErrorRecord.ErrorDetails.Message }
+        elseif ($response -and $response.PSObject.Methods['GetResponseStream']) {
+            try {
+                $stream = $response.GetResponseStream()
+                if ($stream.CanSeek) { $stream.Position = 0 }
+                $body = (New-Object IO.StreamReader($stream)).ReadToEnd()
+            } catch { }
+        }
+    } finally {
+        # Release the pooled connection: Windows PowerShell allows only two per host, so an unclosed
+        # error response stalls the next poll.
+        if ($response -is [IDisposable]) { try { $response.Dispose() } catch { } }
+    }
+    $code = $null
+    if ($body) { try { $code = [string]($body | ConvertFrom-Json).error } catch { } }
+    if ($code -notmatch '^[a-z_]{1,64}$') { $code = $null }
+    return @{ Status = $status; Error = $code }
+}
+
 try {
     # This verifier stays in this process; it is never a command argument or output.
     $random = [Security.Cryptography.RandomNumberGenerator]::Create()
@@ -40,9 +69,8 @@ try {
             break
         } catch {
             # Never emit the raw exception, response, request body, or credential.
-            $oauthError = $null
-            try { $oauthError = ($_.ErrorDetails.Message | ConvertFrom-Json).error } catch { }
-            if ($oauthError -ne 'authorization_pending') { throw 'authorization_not_completed' }
+            $lastHttp = Get-HttpErrorInfo $_
+            if ($lastHttp.Error -ne 'authorization_pending') { throw 'authorization_not_completed' }
         }
     }
     if ([string]::IsNullOrWhiteSpace($key) -or $key -notmatch '^sk[-A-Za-z0-9]+$') { throw 'authorization_not_completed' }
@@ -64,9 +92,11 @@ try {
        message = '安装已完成，可以通过 HTTP 正常使用；当前客户端的 MCP 连接尚未完成。';
        restart_hint = '本次验证进程已可读取凭据。已有客户端进程可能需要重启；先检查变量可见性，不要输出其值。' } | ConvertTo-Json
 } catch {
+    if (-not $lastHttp.Status -and $_.Exception.Response) { $lastHttp = Get-HttpErrorInfo $_ }
     @{ state = 'http_setup_incomplete'; phase = $phase;
        credential_stored = ($phase -eq 'verification');
-       message = 'HTTP 备用接入未完成。请按当前阶段检查，不要重置 API Key，也不要重复安装。' } | ConvertTo-Json
+       http_status = $lastHttp.Status; oauth_error = $lastHttp.Error;
+       message = 'HTTP 备用接入未完成。请按当前阶段及 http_status/oauth_error 检查（access_denied 为用户拒绝，expired_request 为确认页超时），不要重置 API Key，也不要重复安装。' } | ConvertTo-Json
     exit 1
 } finally {
     $key = $null; $claim = $null; $headers = $null; $verifier = $null
