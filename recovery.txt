@@ -3,7 +3,23 @@
 Stdio bridge guide (existing installations): https://bigbrain.work/shiliuAI/install-stdio.txt
 Remote OAuth installation guide: https://bigbrain.work/shiliuAI/install.txt
 
-This procedure recovers the local stdio bridge. Step and Layer references below are sections of install-stdio.txt. For a remote HTTP entry with OAuth, reconnect or use the client's Authenticate action (install.txt section 2). Never convert an existing entry to the other connection type, remove it, or collect an API key as a recovery step.
+## 专属地址失效 (personal MCP URL no longer valid)
+
+Applies when the shiliu_mcp entry URL contains /shiliu/mcp/k/ and the connection offers only `shiliu_reconnect`, or tools answer "石榴 AI 连接已失效". The user's API key was reset (or the address is wrong). This is the expected result of a reset, not a service fault: do not retry OAuth, reinstall, remove other entries, or ask for the key or address in chat.
+
+1. Tell the user: 石榴连接已失效（API Key 已重置），在石榴网页上确认一次即可恢复。
+2. Codex / Claude Code with CLI: download and inspect the fixed helper, then run it once:
+   Windows: `connect-mcp.ps1 -Client codex|claude -UsePersonalUrl` from https://bigbrain.work/shiliuAI/connect-mcp.ps1
+   macOS/Linux: `sh connect-mcp.sh --client codex|claude --use-personal-url` from https://bigbrain.work/shiliuAI/connect-mcp.sh
+   It opens the Shiliu consent page, verifies the new address with the free balance before writing it, and replaces only this personal-URL entry. On Windows it also updates SHILIU_AI_API_KEY used by local editing.
+3. Clients configured in their UI (WorkBuddy, Doubao Work, Cursor): ask the user to copy the current API key from the website account page and replace the part after /mcp/k/ in the connector address themselves. Local editing reads SHILIU_AI_API_KEY; remind the user that it needs the new key too.
+4. Reconnect, then verify native get_account_balance (charged=false, consumed_credits=0). If the helper reports personal_url_incomplete, report its phase; do not loop retries or reset the key again.
+
+If remote OAuth itself fails (no personal URL yet), follow install.txt section 2b.
+
+## Local stdio bridge
+
+This procedure recovers the local stdio bridge. Step and Layer references below are sections of install-stdio.txt. For a remote HTTP entry with OAuth, preserve valid login and follow install.txt section 2's client-specific flow when sign-in is explicitly required. Codex can start browser authorization through codex mcp login shiliu_mcp; WorkBuddy/Doubao Work may require a connector confirmation. Do not default every client to a settings-page Authenticate button. Never convert an existing entry to the other connection type, remove it, or collect an API key as a recovery step.
 
 ## Recovery: Diagnose and recover a failed connection
 

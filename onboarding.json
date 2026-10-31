@@ -2,6 +2,16 @@
   "schema_version": 1,
   "mcp_url": "https://api.bigbrain.work/shiliu/mcp",
   "authentication": "oauth",
+  "authorization_policy": {
+    "preserve_valid_login": true,
+    "codex": "client_login_command_when_sign_in_required",
+    "workbuddy": "client_connector_action_or_required_user_confirmation",
+    "doubao_work": "client_connector_action_or_required_user_confirmation",
+    "unknown_failure_stage": "report_unknown_do_not_infer_registration_failure",
+    "attempts": 1,
+    "on_failure": "personal_url"
+  },
+  "personal_url": {"url_template": "https://api.bigbrain.work/shiliu/mcp/k/<API Key>", "trigger_states": ["oauth_failed"], "cli_helpers": {"windows": "connect-mcp.ps1 -Client codex|claude -UsePersonalUrl", "posix": "connect-mcp.sh --client codex|claude --use-personal-url"}, "ui_clients": "user_copies_key_from_website_account_page", "never_in_chat": true, "verify_before_write": "free_balance", "replaces_only": ["official_remote_entry", "personal_url_entry"], "invalid_key_signal": "only_shiliu_reconnect_tool", "recovery": "https://bigbrain.work/shiliuAI/recovery.txt"},
   "first_check": "existing_installation",
   "existing_installation": {"policy": "preserve", "verify": "native_get_account_balance", "stdio_guide": "https://bigbrain.work/shiliuAI/install-stdio.txt", "stdio_recovery": "https://bigbrain.work/shiliuAI/recovery.txt"},
   "default_attempts": ["remote_mcp", "cli", "skill"],
@@ -10,7 +20,7 @@
   "native_success_requires": ["tools_list_succeeded", "native_get_account_balance_succeeded", "charged_false", "consumed_credits_zero"],
   "success_message": "安装已完成，可以正常使用。",
   "optional_failure_message": "Skill / CLI 安装未成功，但不影响正常使用。",
-  "never_fallback_states": ["existing_installation", "mcp_ready", "awaiting_reload", "authorizing", "cancelled"],
+  "never_fallback_states": ["existing_installation", "mcp_ready", "awaiting_reload", "authorizing", "authorization_required", "cancelled", "oauth_failed", "personal_url_incomplete"],
   "http_fallback_failures": ["client_unsupported", "configuration_failed", "connection_failed"],
   "http_fallback_requires": ["notify_user", "explicit_web_api_key_consent", "safe_storage", "free_balance_verification"],
   "forbidden": ["temporary_finish_scripts", "read_client_oauth_tokens", "print_credentials", "create_or_reset_api_key", "unbounded_reinstall", "paid_installation_test", "replace_existing_entry"]

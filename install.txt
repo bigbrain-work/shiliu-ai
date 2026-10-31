@@ -15,14 +15,18 @@ or loaded Shiliu tools: codex mcp get shiliu_mcp, claude mcp get shiliu_mcp, or 
 client's documented MCP settings. codex mcp add silently overwrites a same-name
 entry, so never run any add command before this check.
 An existing entry of any type is the user's working installation. Do not add,
-replace, remove or convert it, do not start OAuth for it, never use HTTP fallback
+replace, remove or convert it, never restart valid authorization, never use HTTP fallback
 and never collect an API key for it. Record existing_installation and call native
 get_account_balance once:
 - Succeeds: the existing connection is unchanged; resume the user's task.
 - Local stdio bridge (npx @bigbrain-work/mcp-connect mcp) fails, needs login or a
   CLI update: follow https://bigbrain.work/shiliuAI/recovery.txt and the existing
   guide https://bigbrain.work/shiliuAI/install-stdio.txt . Its flow is unchanged.
-- Remote HTTP entry needs authorization: use the client's Authenticate (section 2).
+- Remote HTTP entry explicitly needs authorization: preserve its configuration and
+  start that client's OAuth flow (section 2). This is authorization, not reinstall.
+- Personal URL entry (URL contains /shiliu/mcp/k/) offers only shiliu_reconnect or
+  says "石榴 AI 连接已失效": the API key was reset. Follow recovery.txt
+  "专属地址失效"; do not retry OAuth or reinstall.
 shiliu install without --transport and the fixed connect-mcp.ps1 also preserve
 existing entries. Continue with section 1 only when no shiliu_mcp entry exists.
 
@@ -38,7 +42,8 @@ Use the current client's documented configuration mechanism. Reuse matching entr
 
 Codex CLI if available:
   codex mcp add shiliu_mcp --url https://api.bigbrain.work/shiliu/mcp
-  codex mcp login shiliu_mcp
+If add already completed browser authorization, do not start it again. Otherwise,
+when the client reports sign-in required, run codex mcp login shiliu_mcp once.
 Documented Codex config.toml section, when file editing is supported:
   [mcp_servers.shiliu_mcp]
   url = "https://api.bigbrain.work/shiliu/mcp"
@@ -55,8 +60,16 @@ Use documented MCP settings with the fields above. Do not guess opaque storage.
 Other clients require documented HTTP+OAuth support; never guess an adapter name.
 
 Windows fixed helper: download https://bigbrain.work/shiliuAI/connect-mcp.ps1,
-inspect and run the saved file with -Client codex|claude|cursor. It uses a client
-CLI when available or returns exact GUI fields. Do not use Invoke-Expression.
+inspect and run the saved file with -Client codex|claude|cursor|workbuddy|doubao.
+For new Codex entries it checks OAuth status and starts login when required.
+For an existing matching remote Codex entry, use -AuthorizeExistingRemote only
+after observing sign-in required. Default invocation preserves existing login.
+Other clients receive their own documented next action; no private stores are edited.
+Do not use Invoke-Expression.
+macOS/Linux fixed helper: download https://bigbrain.work/shiliuAI/connect-mcp.sh,
+inspect and run the saved file with sh: --client codex|claude|cursor|workbuddy|doubao,
+optionally --authorize-existing-remote or --use-personal-url. Same behavior and
+JSON report (stdout); progress and authorization links go to stderr.
 
 Written/generated configuration is not connection success. If reconnect/restart/
 new chat is required, give the precise action and record awaiting_reload. This
@@ -64,13 +77,66 @@ state is not failure and must never trigger API-key collection. Resume after rel
 
 ## 2. Browser OAuth
 
-Use the client's Authenticate action. It opens Shiliu AI's consent page. Existing
+The Agent should start authorization through the current client's documented
+command/tool when available. Do not make every user find MCP settings first.
+- Codex: run codex mcp login shiliu_mcp when sign-in is required. The client owns
+  browser launch, PKCE/state, callback and token storage. No settings-page approval
+  is required for this CLI path. If the CLI is unavailable or blocked, use an
+  available documented client auth action, otherwise explain the precise GUI step.
+- Claude Code: use /mcp's authentication action; do not invent a CLI login command.
+- Cursor: use its current documented OAuth/connect action when required.
+- WorkBuddy: use the client's available connector installation/connection action.
+  If it requests installation approval or shows a connector as needing connection,
+  ask the user for that specific confirmation/Connect action. Its OAuth manager
+  then opens the browser. Do not run Codex commands or assume its private config.
+- Doubao: these instructions concern Doubao Work / the desktop connector feature,
+  not every Doubao app or model API. Use the client's connector action when available.
+  If it shows "连接器需要授权", ask the user to select "去授权" on that connector;
+  the client then opens the browser. Do not invent an on-disk configuration path.
+Only ask for a client-side click when actually required by the available interface.
+Client installation/trust approval and Shiliu webpage consent are separate steps.
+
+Once started, reuse the same client-generated authorization request. Existing
 website login goes directly to confirmation; otherwise the user scans WeChat on
 the website and returns to the same consent request. Login alone never implies
 consent. Do not invoke shiliu login, display a local QR or read client OAuth tokens.
+Do not open a bare consent URL or construct an OAuth request manually: that loses
+the client's PKCE/state/callback context. If a browser did not open and the client
+provides a complete authorization URL, open that exact URL locally; never put it
+in public logs or summaries. Opening the homepage alone cannot authenticate MCP.
 Cancellation is not installation failure; do not silently switch authentication.
 Requests last 600 seconds. Replace an expired request only if the user continues.
 Access tokens refresh automatically. Expiry/revocation is not a reinstall trigger.
+
+If authentication fails, record only known evidence: client/version, operation,
+HTTP method and URL origin/path (without query), status and request ID if available.
+Do not include credentials, authorization codes, state or PKCE parameters. A generic
+404 is not proof of registration failure; mark its stage/path unknown unless shown.
+Do not send the user to another auth entry merely to repeat the same known failure.
+Authorization uses api.bigbrain.work and www.bigbrain.work; allow both when
+diagnosing network rules, but do not change DNS/proxy rules without evidence.
+Attempt OAuth once. If it fails (helper state oauth_failed, a client error, the
+client reports OAuth unsupported, no browser and no complete link, or tools stay
+unauthorized after a completed callback), go to section 2b. User cancellation or a
+consent page still open is not failure: ask whether to continue instead.
+
+## 2b. OAuth failed: personal MCP URL
+
+Tell the user OAuth did not work and that you will switch to a personal address.
+The personal URL is https://api.bigbrain.work/shiliu/mcp/k/<API Key>: the same
+service authenticated by the user's existing homepage API key. Treat it like a
+password: never print, log, summarize or ask the user to send it or the key in chat.
+- Codex / Claude Code with CLI: run the fixed helper with -UsePersonalUrl (Windows)
+  or --use-personal-url (macOS/Linux). It opens the official consent page; the user
+  confirms once; it verifies the address with the free balance before writing it,
+  then replaces only the official remote or an earlier personal-URL entry. A stdio
+  bridge or custom entry is preserved. On Windows it also stores SHILIU_AI_API_KEY
+  (user scope) for local editing.
+- Clients configured in their UI (WorkBuddy, Doubao Work, Cursor): ask the user to
+  copy the API key from the website account page and enter the URL above in the
+  connector address themselves, replacing the failed Shiliu connector.
+Then reconnect and complete section 3. An invalid or reset key never returns 401
+here: the connection offers only shiliu_reconnect; follow recovery.txt.
 
 ## 3. Native verification
 
@@ -115,7 +181,11 @@ Never delete broad caches, unrelated servers, credentials or replace PATH/config
 - existing_installation: keep the entry; verify or recover per section 0; no fallback.
 - awaiting_reload: prompt reconnect/restart/new chat; no fallback.
 - authorizing: complete the same browser request; no fallback.
+  The helper's authorization_required means authorization is incomplete/unknown;
+  inspect its next_action, do not treat it as a confirmed terminal failure.
 - cancelled: await the user's decision to continue; no fallback.
+- oauth_failed: switch to the personal URL (section 2b), not to HTTP fallback.
+- personal_url_incomplete: report its phase; do not reset the key or loop retries.
 - configuration_failed: documented settings still cannot be saved after repair.
   An already existing shiliu_mcp entry is never configuration_failed.
 - client_unsupported: client has no documented remote MCP path.
