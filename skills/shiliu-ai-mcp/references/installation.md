@@ -35,6 +35,10 @@ configuration accepts only URL/headers with no authorization control goes straig
 to the personal URL. Use the client's own field names (WorkBuddy mcp.json needs
 `"type":"streamableHttp"`); helper report fields are not configuration keys. Never
 ask the user to click a control they have not reported seeing.
+Read back WorkBuddy's exact `client_config` fields after saving. If they are correct
+but absent from the MCP list after an external edit, fully restart WorkBuddy and
+check the list/status before authorization. A trailing JSON blank line or grey Save
+button does not establish a configuration error.
 
 Attempt OAuth once. If it fails (helper state `oauth_failed`; cancellation is not
 failure), tell the user and switch to the personal URL in install.txt section 2b:
@@ -51,6 +55,29 @@ For optional failure add only “Skill / CLI 安装未成功，但不影响正�
 Never ask the user to repair these optional components before continuing.
 Then stop. Continue only with an unfinished request the user made in this
 conversation besides installation; never ask about or infer other tasks.
+
+## Skill installation across clients
+
+Resolve the current client's actual Skill parent directory from documentation,
+settings or runtime evidence; default to user scope, not a guessed --agent alias.
+Known 2026-10-31 observations (recheck): WorkBuddy uses HOME/.workbuddy/skills;
+DSH reported HOME/.dsh/skills and HOME/.agents/skills; one Doubao Work build uses
+%LOCALAPPDATA%/Doubao/User Data/Default/.doubao/agent_mode/workspace/.user_skills.
+Codex/Cursor use HOME/.agents/skills and Claude Code HOME/.claude/skills.
+
+With CLI: `shiliu skill install --target-dir "<absolute parent>" --scope user --json`.
+Without CLI on Windows: inspect the fixed `install-skill.ps1` from the website and
+run it with `-TargetDir "<absolute parent>" -Scope user`; expand environment variables
+first. Existing `-Client codex|claude|cursor` remains valid for those clients only;
+do not combine it with TargetDir. No Node/npm/Git required. The CLI records scoped
+refresh targets; the standalone PowerShell installer only installs verified files.
+
+Preserve same-name existing targets and copies used by other clients. Verify file
+hashes, client discovery/enablement after restart, and actual new-session loading
+separately. If absent, check enable/trust, restart, frontmatter and logs before
+changing directories. Never report file presence alone as a successful Skill setup.
+Do not create targets, update software or repair unmanaged copies during ordinary
+business tasks; these steps apply only to an authorized installation/recovery.
 
 After native MCP succeeds, do not acquire API keys or configure HTTP fallback.
 Only a confirmed client-side failure after one targeted repair permits fallback.

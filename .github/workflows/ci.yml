@@ -115,6 +115,12 @@ jobs:
       - name: Test the Windows MCP onboarding helper with mocked clients
         run: powershell.exe -NoProfile -File ./scripts/test-connect-mcp.ps1
 
+      - name: Test custom Skill destinations on Windows PowerShell 5.1
+        run: powershell.exe -NoProfile -File ./scripts/test-install-skill.ps1
+
+      - name: Test custom Skill destinations on PowerShell 7
+        run: ./scripts/test-install-skill.ps1
+
       - name: Install CLI dependencies
         run: npm ci --prefix npm/mcp-connect
 

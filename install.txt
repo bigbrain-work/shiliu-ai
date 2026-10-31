@@ -58,6 +58,11 @@ Cursor documented JSON, merge without replacing other entries:
 WorkBuddy user mcp.json (field names verified in WorkBuddy on 2026-10-31), merge
 without replacing other entries such as built-in servers:
   {"mcpServers":{"shiliu_mcp":{"type":"streamableHttp","url":"https://api.bigbrain.work/shiliu/mcp"}}}
+Use that exact client_config shape, not generic transport=http report fields.
+Read back the saved Shiliu entry and verify type=streamableHttp before asking for
+authorization. If the correct entry is not visible after an external file edit,
+ask the user to fully restart WorkBuddy, then inspect its MCP list and status.
+Do not infer a JSON error from a trailing blank line or from a grey Save button.
 
 Connector forms in a client UI (for example Doubao): name shiliu_mcp, transport
 HTTP, the URL above, custom headers empty.
@@ -119,7 +124,9 @@ command/tool when available. Do not make every user find MCP settings first.
   If it shows "连接器需要授权", ask the user to select "去授权" on that connector;
   the client then opens the browser. Do not invent an on-disk configuration path.
   If there is no such control, or the saved connector only shows a failure or 401,
-  OAuth is not available in this build: go to section 2b.
+  first check whether any usable authorization path exists. Go to section 2b only
+  when authorization cannot be started or actually fails; a bare 401 alone does
+  not establish that OAuth is unavailable.
 Only ask for a client-side click when actually required by the available interface.
 Never ask the user to click a control they have not reported seeing. If the user
 says it does not exist, treat OAuth as unavailable here and go to section 2b.
@@ -193,18 +200,46 @@ official install.ps1 (Windows) or install.sh (POSIX) once, then shiliu --version
 These install only the optional developer CLI. If runtime is missing/blocked,
 record CLI failed; do not install Node/npm just to complete an optional component.
 
-Skill: use exactly one matching command when CLI is available:
-  shiliu skill install --agent codex --scope user --json
-  shiliu skill install --agent claude-code --scope user --json
-  shiliu skill install --agent cursor --scope user --json
-Use project scope only when requested. On Windows without CLI, download the fixed
-https://bigbrain.work/shiliuAI/install-skill.ps1 and run with -Client codex|claude|cursor
-and -Scope user|project. Project scope requires -ProjectPath. It verifies files
-against skill-files.json and requires no Node, npm or Git. Other systems without
-CLI may use a supported installer for the official skill-files.json HTTPS file
-list and hashes; otherwise record optional failure. Never create another installer.
-Codex/Cursor user parent is HOME/.agents/skills; Claude is HOME/.claude/skills.
-An existing Skill is preserved; do not update an unrelated or unmanaged copy.
+Skill: determine this client's actual Skill scan directory from its documentation,
+settings or runtime evidence. Prefer user scope; use project scope only when asked.
+Do not infer installation from another client's files and do not invent an agent
+identifier, directory or installer. If the directory cannot be established, report
+optional failure rather than guessing. Reuse an existing official Skill in a
+confirmed scan directory; preserve copies outside it because other clients may use them.
+
+Known observations on 2026-10-31, not permanent rules:
+- Codex/Cursor: HOME/.agents/skills; Claude Code: HOME/.claude/skills.
+- WorkBuddy: HOME/.workbuddy/skills (project: <workspace>/.workbuddy/skills).
+- DeepSeek Harness: HOME/.dsh/skills and HOME/.agents/skills were reported as scanned;
+  confirm the current runtime before reusing a shared copy.
+- Doubao Work: one desktop build reported
+  %LOCALAPPDATA%/Doubao/User Data/Default/.doubao/agent_mode/workspace/.user_skills.
+  Confirm the current product/profile; expand environment variables to an absolute
+  path. Do not write other application settings or guess a different profile.
+
+Use exactly one supported installation path after confirming the parent directory:
+- CLI available: shiliu skill install --target-dir "<absolute Skill parent>" --scope user --json
+  The CLI records this target for future scoped refresh. Existing supported --agent
+  codex|claude-code|cursor commands remain valid for those clients, not aliases for others.
+- Windows without CLI: download and inspect the official
+  https://bigbrain.work/shiliuAI/install-skill.ps1, then run the saved file with
+  -TargetDir "<absolute Skill parent>" -Scope user. It needs no Node/npm/Git and
+  validates every file against skill-files.json before moving the whole Skill.
+  Do not install a runtime just for this optional component or use -Client codex
+  as a workaround for another client. Its legacy -Client codex|claude|cursor
+  selection remains available; choose either -Client or -TargetDir, never both.
+  Project scope requires -ProjectPath. This standalone helper does not register
+  the CLI refresh target; do not claim automatic refresh registration.
+- Other systems without CLI: use a supported official manifest/hash installer if
+  available, otherwise record optional failure. Never synthesize an installer.
+
+An existing same-name target is preserved (already_present is not proof of loading).
+Verify three separate facts: files complete and hashes correct; the client discovers
+and enables the Skill after reload/restart; a new session actually loads it. A file
+installation result alone is not Skill-ready. If not visible, first check enable/trust
+controls, full restart, valid SKILL.md frontmatter and client diagnostics, then the
+scan path. Only install into a different confirmed directory when the original is
+not scanned; retain the old copy. Do not delete caches or reinstall in a loop.
 
 After native success, failures add only the relevant sentence:
   Skill 安装未成功，但不影响正常使用。
