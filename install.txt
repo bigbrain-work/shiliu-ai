@@ -18,7 +18,7 @@ An existing entry of any type is the user's working installation. Do not add,
 replace, remove or convert it, never restart valid authorization, never use HTTP fallback
 and never collect an API key for it. Record existing_installation and call native
 get_account_balance once:
-- Succeeds: the existing connection is unchanged; resume the user's task.
+- Succeeds: the existing connection is unchanged; report it and stop as in section 3.
 - Local stdio bridge (npx @bigbrain-work/mcp-connect mcp) fails, needs login or a
   CLI update: follow https://bigbrain.work/shiliuAI/recovery.txt and the existing
   guide https://bigbrain.work/shiliuAI/install-stdio.txt . Its flow is unchanged.
@@ -55,9 +55,18 @@ Then open /mcp and authenticate.
 Cursor documented JSON, merge without replacing other entries:
   {"mcpServers":{"shiliu_mcp":{"url":"https://api.bigbrain.work/shiliu/mcp"}}}
 
+WorkBuddy user mcp.json (field names verified in WorkBuddy on 2026-10-31), merge
+without replacing other entries such as built-in servers:
+  {"mcpServers":{"shiliu_mcp":{"type":"streamableHttp","url":"https://api.bigbrain.work/shiliu/mcp"}}}
+
+Connector forms in a client UI (for example Doubao): name shiliu_mcp, transport
+HTTP, the URL above, custom headers empty.
+
 Desktop clients may have no CLI on PATH. That is not a reason to install Node.
-Use documented MCP settings with the fields above. Do not guess opaque storage.
-Other clients require documented HTTP+OAuth support; never guess an adapter name.
+Use the client's own documented field names. Helper report fields such as
+transport=http describe the connection; they are not configuration keys to copy.
+Never invent menu paths, buttons, configuration files or adapter names: ask the
+user what the client actually shows. Do not guess opaque storage.
 
 Windows fixed helper: download https://bigbrain.work/shiliuAI/connect-mcp.ps1,
 inspect and run the saved file with -Client codex|claude|cursor|workbuddy|doubao.
@@ -74,8 +83,24 @@ JSON report (stdout); progress and authorization links go to stderr.
 Written/generated configuration is not connection success. If reconnect/restart/
 new chat is required, give the precise action and record awaiting_reload. This
 state is not failure and must never trigger API-key collection. Resume after reload.
+If tools still do not appear, do not assume a reload is all that is missing. Check
+in order: the client lists the entry (field names correct), the entry is enabled,
+and whether it shows an authorization or connection error. Act on what you find.
 
 ## 2. Browser OAuth
+
+First decide from evidence whether this client can do MCP OAuth: its documented
+MCP/connector features, an authorization control in its configuration UI, or a
+browser/authorization prompt after the server is added. A bare 401 from the MCP
+URL is not evidence either way: it is how OAuth discovery starts.
+- Supports OAuth, or it cannot be determined: attempt OAuth once (below).
+- Clearly cannot (the configuration accepts only URL and headers, there is no
+  authorization control, and adding the server opens no browser or prompt): tell
+  the user that evidence and go directly to section 2b.
+Client capabilities change between versions; decide again on every installation.
+Observed on 2026-10-31, for reference only: DeepSeek Harness HTTP MCP accepted only
+URL and headers; one Doubao desktop build offered a custom connector form with no
+OAuth control and reported 401. Re-check; do not assume these still hold.
 
 The Agent should start authorization through the current client's documented
 command/tool when available. Do not make every user find MCP settings first.
@@ -93,7 +118,11 @@ command/tool when available. Do not make every user find MCP settings first.
   not every Doubao app or model API. Use the client's connector action when available.
   If it shows "连接器需要授权", ask the user to select "去授权" on that connector;
   the client then opens the browser. Do not invent an on-disk configuration path.
+  If there is no such control, or the saved connector only shows a failure or 401,
+  OAuth is not available in this build: go to section 2b.
 Only ask for a client-side click when actually required by the available interface.
+Never ask the user to click a control they have not reported seeing. If the user
+says it does not exist, treat OAuth as unavailable here and go to section 2b.
 Client installation/trust approval and Shiliu webpage consent are separate steps.
 
 Once started, reuse the same client-generated authorization request. Existing
@@ -132,11 +161,16 @@ password: never print, log, summarize or ask the user to send it or the key in c
   then replaces only the official remote or an earlier personal-URL entry. A stdio
   bridge or custom entry is preserved. On Windows it also stores SHILIU_AI_API_KEY
   (user scope) for local editing.
-- Clients configured in their UI (WorkBuddy, Doubao Work, Cursor): ask the user to
-  copy the API key from the website account page and enter the URL above in the
-  connector address themselves, replacing the failed Shiliu connector.
+- Clients configured in their UI or files the Agent may not edit (WorkBuddy, Doubao
+  Work, Cursor, DeepSeek Harness and similar): ask the user to copy the API key from
+  the website account page and put the URL above into the existing Shiliu entry
+  themselves (same fields as section 1, headers empty), replacing the failed URL
+  rather than adding a second entry.
 Then reconnect and complete section 3. An invalid or reset key never returns 401
 here: the connection offers only shiliu_reconnect; follow recovery.txt.
+If the client later gains OAuth support, the personal URL keeps working. Switch to
+OAuth only when the user asks: remove the personal-URL entry, then add the official
+URL with section 1 and authorize with section 2.
 
 ## 3. Native verification
 
@@ -145,7 +179,9 @@ success, billing.charged=false and billing.consumed_credits=0. Never test with a
 paid tool. CLI status/tools/call or initialize alone are not native MCP proof.
 Record mcp_ready and say: 安装已完成，可以正常使用。
 Never acquire an API key or configure HTTP fallback after this success.
-Complete the independent optional attempts, then resume the user's original task.
+Complete the independent optional attempts, then stop. Continue only with a request
+the user made in this conversation, besides installation, that is still unfinished.
+Do not ask about other tasks or infer one from the working directory.
 
 ## 4. Default independent optional attempts (once each)
 

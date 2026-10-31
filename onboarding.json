@@ -9,8 +9,15 @@
     "doubao_work": "client_connector_action_or_required_user_confirmation",
     "unknown_failure_stage": "report_unknown_do_not_infer_registration_failure",
     "attempts": 1,
-    "on_failure": "personal_url"
+    "on_failure": "personal_url",
+    "capability": "decide_from_evidence_each_installation",
+    "bare_401_is_evidence": false,
+    "no_oauth_evidence": ["config_accepts_only_url_and_headers", "no_authorization_control", "no_browser_or_prompt_after_adding"],
+    "on_no_oauth": "personal_url_directly",
+    "never_ask_for_unreported_controls": true
   },
+  "client_templates": {"workbuddy_mcp_json": {"type": "streamableHttp", "url": "https://api.bigbrain.work/shiliu/mcp"}, "connector_form": {"transport": "HTTP", "custom_headers": "empty"}, "report_fields_are_not_config_keys": true},
+  "completion": "stop_unless_unfinished_non_installation_request_in_conversation",
   "personal_url": {"url_template": "https://api.bigbrain.work/shiliu/mcp/k/<API Key>", "trigger_states": ["oauth_failed"], "cli_helpers": {"windows": "connect-mcp.ps1 -Client codex|claude -UsePersonalUrl", "posix": "connect-mcp.sh --client codex|claude --use-personal-url"}, "ui_clients": "user_copies_key_from_website_account_page", "never_in_chat": true, "verify_before_write": "free_balance", "replaces_only": ["official_remote_entry", "personal_url_entry"], "invalid_key_signal": "only_shiliu_reconnect_tool", "recovery": "https://bigbrain.work/shiliuAI/recovery.txt"},
   "first_check": "existing_installation",
   "existing_installation": {"policy": "preserve", "verify": "native_get_account_balance", "stdio_guide": "https://bigbrain.work/shiliuAI/install-stdio.txt", "stdio_recovery": "https://bigbrain.work/shiliuAI/recovery.txt"},

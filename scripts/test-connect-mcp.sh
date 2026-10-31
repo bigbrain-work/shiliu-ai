@@ -52,7 +52,11 @@ case "$url" in
   */oauth/http-fallback)
     case "$data" in *'"mcp_failure":"oauth_failed"'*) ;; *) exit 22 ;; esac
     printf '{"request_id":"rid_fixture","authorization_url":"%s","expires_in":600}' "$(cat "$F/consent")" ;;
-  */oauth/http-fallback/token) printf '{"api_key":"%s"}' "$SHILIU_TEST_KEY" ;;
+  */oauth/http-fallback/token)
+    polls=$(($(cat "$F/polls") + 1)); echo "$polls" > "$F/polls"
+    if [ "$polls" -le 2 ]; then printf '{"error":"authorization_pending"}'
+    elif [ -s "$F/token_error" ]; then printf '{"error":"%s"}' "$(cat "$F/token_error")"
+    else printf '{"api_key":"%s"}' "$SHILIU_TEST_KEY"; fi ;;
   "https://api.bigbrain.work/shiliu/mcp/k/$SHILIU_TEST_KEY")
     case "$data" in
       *tools/list*) printf '{"result":{"tools":[{"name":"%s"}]}}' "$(cat "$F/balance_tool")" ;;
@@ -74,6 +78,7 @@ run_case() { # client, options...
   echo null > "$FIX/headers"; echo not_logged_in > "$FIX/auth"; echo 0 > "$FIX/add_exit"; echo 0 > "$FIX/login_exit"
   echo http > "$FIX/claude_type"; echo get_account_balance > "$FIX/balance_tool"
   echo 'https://bigbrain.work/shiliuai/agent-authorize?request=rid_fixture' > "$FIX/consent"
+  echo 0 > "$FIX/polls"; : > "$FIX/token_error"
   client=$1; shift
   args=''
   for option in "$@"; do
@@ -120,12 +125,19 @@ run_case codex add_exit=1
 check 'add error after save no repeat' 'state_is oauth_failed && [ "$(count "mcp add" calls)" = 1 ]'
 for client in workbuddy doubao; do
   run_case "$client"
-  check "$client connector guidance" 'state_is configuration_generated && case "$REPORT" in *"fallback_url_template\":\"$OFFICIAL/k/"*) true ;; *) false ;; esac'
+  check "$client connector guidance" 'state_is configuration_generated && case "$REPORT" in *"fallback_url_template\":\"$OFFICIAL/k/"*) true ;; *) false ;; esac && case "$REPORT" in *"\"transport\":\"http\""*) false ;; *) true ;; esac'
 done
+run_case workbuddy
+check 'WorkBuddy client_config uses streamableHttp' 'case "$REPORT" in *"\"shiliu_mcp\":{\"type\":\"streamableHttp\",\"url\":\"$OFFICIAL\"}"*) true ;; *) false ;; esac'
+run_case doubao
+check 'Doubao ui_form fields' 'case "$REPORT" in *"\"ui_form\":{\"name\":\"shiliu_mcp\",\"transport\":\"HTTP\",\"url\":\"$OFFICIAL\""*) true ;; *) false ;; esac'
 
 # Personal URL path.
+# Every personal-URL case first receives two authorization_pending polls.
 run_case codex --use-personal-url
-check 'personal URL for new Codex entry' 'state_is awaiting_reload && [ "$(cat "$FIX/url")" = "$OFFICIAL/k/$KEY" ] && clean'
+check 'personal URL for new Codex entry' 'state_is awaiting_reload && [ "$(cat "$FIX/url")" = "$OFFICIAL/k/$KEY" ] && clean && [ "$(grep -c token "$FIX/http")" = 3 ]'
+run_case codex token_error=access_denied --use-personal-url
+check 'personal URL denied on website' 'state_is personal_url_incomplete && case "$REPORT" in *"\"oauth_error\":\"access_denied\""*) true ;; *) false ;; esac && [ "$(count "mcp add" calls)" = 0 ]'
 run_case codex exists=1 --use-personal-url
 check 'personal URL replaces failed OAuth entry' 'state_is awaiting_reload && case "$REPORT" in *"\"replaced_entry\":true"*) true ;; *) false ;; esac'
 run_case codex exists=1 "url=$OFFICIAL/k/sk-old" --use-personal-url
@@ -143,7 +155,7 @@ check 'personal URL for Claude Code replaces user entry' 'state_is awaiting_relo
 run_case claude exists=1 claude_type=stdio --use-personal-url
 check 'personal URL keeps Claude stdio' 'state_is existing_installation && [ "$(count "mcp add" calls)" = 0 ]'
 run_case workbuddy --use-personal-url
-check 'personal URL without CLI is user-filled' 'state_is configuration_generated && [ ! -s "$FIX/http" ]'
+check 'personal URL without CLI is user-filled' 'state_is configuration_generated && [ ! -s "$FIX/http" ] && case "$REPORT" in *"\"client_config\":{\"mcpServers\":{\"shiliu_mcp\":{\"type\":\"streamableHttp\",\"url\":\"$OFFICIAL/k/"*) true ;; *) false ;; esac'
 
 # Only files this harness created inside its own mktemp directory are removed.
 case "$SANDBOX" in */shiliu-connect-sh-test.*) rm -rf -- "$SANDBOX" ;; esac
