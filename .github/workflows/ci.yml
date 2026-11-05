@@ -121,6 +121,18 @@ jobs:
       - name: Test custom Skill destinations on PowerShell 7
         run: ./scripts/test-install-skill.ps1
 
+      - name: Test personal MCP handoff without exposing credentials
+        run: |
+          powershell.exe -NoProfile -File ./scripts/test-connect-personal.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/test-connect-personal.ps1
+
+      - name: Test WorkBuddy and DSH configuration adapters
+        run: |
+          powershell.exe -NoProfile -File ./scripts/test-configure-mcp-client.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/test-configure-mcp-client.ps1
+
       - name: Install CLI dependencies
         run: npm ci --prefix npm/mcp-connect
 

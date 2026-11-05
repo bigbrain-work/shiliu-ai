@@ -1,6 +1,7 @@
 ﻿[CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('codex', 'claude', 'cursor', 'workbuddy', 'doubao')][string]$Client,
+    [Parameter(Mandatory = $true)][ValidateSet('codex', 'claude', 'cursor', 'workbuddy', 'doubao', 'dsh')][string]$Client,
+    [string]$ConfigPath,
     [switch]$AuthorizeExistingRemote,
     # Use only after OAuth failed (state oauth_failed) or a personal URL reports it is no longer valid.
     [switch]$UsePersonalUrl,
@@ -9,6 +10,14 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+if ($PSBoundParameters.ContainsKey('ConfigPath')) {
+    if ($Client -notin @('workbuddy','dsh') -or $AuthorizeExistingRemote) {
+        @{ state = 'configuration_failed'; reason = 'unsupported_config_selection' } | ConvertTo-Json
+        exit 1
+    }
+    & (Join-Path $PSScriptRoot 'configure-mcp-client.ps1') -Client $Client -ConfigPath $ConfigPath -UsePersonalUrl:$UsePersonalUrl -SkipEditingCredential:$SkipEditingCredential
+    return
+}
 $api = 'https://api.bigbrain.work/shiliu'
 $endpoint = "$api/mcp"
 $personalPrefix = "$endpoint/k/"
@@ -19,6 +28,7 @@ $personalTemplate = "$personalPrefix<官网账户页的 API Key>"
 # type=streamableHttp, verified 2026-10-31).
 function Get-ClientTemplate([string]$Url) {
     switch ($Client) {
+        'dsh' { return @{ client_config = @{ id = 'shiliu_mcp'; name = '@deepseek-ai/dsh-mcp-client'; config = @{ serverName = 'shiliu_mcp'; transport = 'streamable-http'; url = $Url } } } }
         'workbuddy' { return @{ client_config = @{ mcpServers = @{ shiliu_mcp = @{ type = 'streamableHttp'; url = $Url } } } } }
         'cursor' { return @{ client_config = @{ mcpServers = @{ shiliu_mcp = @{ url = $Url } } } } }
         'doubao' { return @{ ui_form = @{ name = 'shiliu_mcp'; transport = 'HTTP'; url = $Url; custom_headers = '留空' } } }
@@ -218,9 +228,10 @@ function Test-PersonalUrl([string]$Url) {
 function Invoke-PersonalUrlSetup($program) {
     if ($Client -notin @('codex', 'claude') -or -not $program) {
         # No CLI: the user pastes the address into the client. Never collect the key in chat.
-        $report = @{ state = 'configuration_generated'; next_action = 'user_fills_personal_url'; connection = 'personal_url';
+        $report = @{ state = 'configuration_generated'; next_action = 'use_personal_handoff'; connection = 'personal_url';
            url_template = $personalTemplate;
-           message = '请用户本人在石榴官网账户页复制 API Key，把已有石榴条目的地址改为 url_template（把尖括号部分换成 API Key），字段名按 client_config/ui_form，请求头留空，替换原地址而不是再加一条，保存后告诉你已完成。不要让用户把 API Key 发到对话里。完成后用原生工具免费查询余额验证。' }
+           handoff_helper = 'https://bigbrain.work/shiliuAI/connect-personal.ps1';
+           message = '运行官方 connect-personal.ps1，让用户只在网页确认。可编辑的已核实配置文件用 -ConfigPath；仅界面操作用 -CopyToClipboard，用户粘贴到原连接器。不要让用户手动获取 Key，不要把地址或剪贴板读入对话；之后验证原生免费余额。' }
         $report += (Get-ClientTemplate $personalTemplate)
         $report | ConvertTo-Json -Depth 6
         return
@@ -331,14 +342,16 @@ try {
         }
         $report = @{ state = 'configuration_generated'; next_action = 'use_client_connector_action'; authentication = 'oauth';
            fallback_url_template = $personalTemplate;
-           message = $instruction + ' 没有授权入口、保存后只显示失败或 401、或网页授权失败时，不要反复尝试，也不要让用户点不存在的按钮：请用户本人在官网账户页复制 API Key，把同一条目的地址改为 fallback_url_template；不要让用户把 Key 发到对话里。' }
+           handoff_helper = 'https://bigbrain.work/shiliuAI/connect-personal.ps1';
+           message = $instruction + ' 单独 401 不算 OAuth 不可用。确无可用授权路径或授权实际失败时，用官方 connect-personal.ps1 网页交接：按权限选择 -ConfigPath 或 -CopyToClipboard。不让用户手动获取 Key；只替换原石榴连接，随后验证原生免费余额。' }
         $report += (Get-ClientTemplate $endpoint)
         $report | ConvertTo-Json -Depth 6
     } else {
         # Desktop clients do not necessarily ship a CLI on PATH. This is not a runtime failure.
         $report = @{ state = 'configuration_generated'; next_action = 'use_documented_client_mcp_settings'; authentication = 'oauth';
            fallback_url_template = $personalTemplate;
-           message = '用客户端自己的字段名添加以上远程连接（有 client_config 时照它填写），再按客户端提示授权。无需安装 Node/npm。没有授权入口或授权失败时改用 fallback_url_template，由用户本人填入 API Key。' }
+           handoff_helper = 'https://bigbrain.work/shiliuAI/connect-personal.ps1';
+           message = '按客户端支持的字段添加远程连接。OAuth 不可用或失败时用官方 connect-personal.ps1 网页交接，按实际权限选择 -ConfigPath 或 -CopyToClipboard；不需要 Node/npm，也不要让用户手动获取 Key。准备完成后仍需原生验证。' }
         $report += (Get-ClientTemplate $endpoint)
         $report | ConvertTo-Json -Depth 6
     }

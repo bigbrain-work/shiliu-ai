@@ -3,6 +3,8 @@ $source = Join-Path $PSScriptRoot '../install-skill.ps1'
 $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('shiliu-skill-test-' + [guid]::NewGuid().ToString('N'))
 $fixture = @{ downloads = 0; tamper = $false; noSkill = $false; invalidPath = $false; failDownload = $false }
 $count = 0
+$savedDshHome = $env:DSH_HOME
+$env:DSH_HOME = $null
 function Assert-Case($Condition, [string]$Name) {
     if (-not $Condition) { throw "FAIL: $Name" }
     $script:count++
@@ -50,6 +52,12 @@ try {
         $expected = if ($client -eq 'claude') { '.claude/skills/shiliu-ai-mcp' } else { '.agents/skills/shiliu-ai-mcp' }
         Assert-Case ($result.state -in @('installed', 'already_present') -and (Test-Path -LiteralPath (Join-Path $homeFixture $expected))) "legacy $client"
     }
+    $result = Install-Case 'DSH named client' @{ Client = 'dsh'; Scope = 'user' }
+    Assert-Case ($result.state -eq 'installed' -and (Test-Path -LiteralPath (Join-Path $homeFixture '.dsh/skills/shiliu-ai-mcp/SKILL.md'))) 'DSH has its own named Skill target'
+    $result = Install-Case 'WorkBuddy requires verified target' @{ Client = 'workbuddy' }
+    Assert-Case ($result.reason -eq 'client_target_directory_required') 'WorkBuddy does not borrow Cursor target'
+    $result = Install-Case 'WorkBuddy explicit target' @{ Client = 'workbuddy'; TargetDir = (Join-Path $sandbox 'verified-workbuddy/skills') }
+    Assert-Case ($result.state -eq 'installed') 'WorkBuddy named client accepts verified directory'
     $existing = Join-Path $sandbox 'WorkBuddy 中文 space/.workbuddy/skills'
     $original = [IO.File]::ReadAllText((Join-Path $existing 'shiliu-ai-mcp/SKILL.md'))
     $fixture.downloads = 0
@@ -78,6 +86,7 @@ try {
     # Expected failing child-script cases set LASTEXITCODE; do not leak that code to the CI shell.
     $global:LASTEXITCODE = 0
 } finally {
+    $env:DSH_HOME = $savedDshHome
     $resolved = [IO.Path]::GetFullPath($sandbox)
     $temp = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
     if ($resolved.StartsWith($temp, [StringComparison]::OrdinalIgnoreCase) -and [IO.Path]::GetFileName($resolved).StartsWith('shiliu-skill-test-')) {
