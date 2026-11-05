@@ -44,9 +44,16 @@ Attempt OAuth once. If it fails (helper state `oauth_failed`; cancellation is no
 failure), tell the user and switch to the personal URL in install.txt section 2b:
 `https://api.bigbrain.work/shiliu/mcp/k/<API Key>`. With a CLI run the fixed helper
 with `-UsePersonalUrl` (Windows) or `--use-personal-url` (macOS/Linux); it uses the
-website consent page and verifies before writing. UI-configured clients: the user
-copies the key from the website account page and fills the address. Never print the
-address or ask for the key in chat. A personal-URL entry that offers only
+website consent page and verifies before writing. Other Windows clients use the
+fixed `connect-personal.ps1` with `-ClientName` and a verified, editable `-ConfigPath`,
+or `-CopyToClipboard` when only user UI edits are allowed. The user only approves
+the website request, then pastes the locally prepared address if required; never
+ask them to obtain/copy an API Key. No CLI/Node/npm needed. The helper checks free
+balance before narrow config replacement, preserves a backup, and prints no secret.
+Its `personal_url_prepared` state still requires native tools/free-balance proof.
+If no supported local handoff is available, report that limitation rather than
+inventing scripts or reverting to manual key collection. Never print the address
+or read the clipboard into chat. A personal-URL entry that offers only
 `shiliu_reconnect` means the key was reset: follow recovery.txt "专属地址失效".
 
 Default CLI and Skill attempts are independent and bounded to one each. Failure

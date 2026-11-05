@@ -168,11 +168,37 @@ password: never print, log, summarize or ask the user to send it or the key in c
   then replaces only the official remote or an earlier personal-URL entry. A stdio
   bridge or custom entry is preserved. On Windows it also stores SHILIU_AI_API_KEY
   (user scope) for local editing.
-- Clients configured in their UI or files the Agent may not edit (WorkBuddy, Doubao
-  Work, Cursor, DeepSeek Harness and similar): ask the user to copy the API key from
-  the website account page and put the URL above into the existing Shiliu entry
-  themselves (same fields as section 1, headers empty), replacing the failed URL
-  rather than adding a second entry.
+- Other Windows clients, including DSH without Node/npm/CLI: use the official
+  https://bigbrain.work/shiliuAI/connect-personal.ps1. This is a personal-MCP
+  credential handoff, not the direct HTTP fallback. The user logs in and approves
+  on the Shiliu page; the helper claims the existing key locally, verifies free
+  balance and prepares the same MCP entry. Never ask the user to obtain/copy a key.
+  For WorkBuddy or DSH with a verified editable config path, save connect-mcp.ps1,
+  configure-mcp-client.ps1 and connect-personal.ps1 from the same official directory.
+  Run connect-mcp.ps1 -Client workbuddy (or dsh) -ConfigPath "<verified config>"
+  -UsePersonalUrl. The adapter creates/repairs the client-specific Shiliu entry
+  before the consented handoff; it preserves other connections and refuses unsafe
+  or ambiguous layouts. WorkBuddy uses type=streamableHttp; DSH uses
+  transport=streamable-http. Do not borrow another client's name or overwrite a
+  working stdio/custom-auth connection.
+  First establish the client's real config file and permission to edit it. When
+  allowed, first create the official URL entry through the supported client mechanism,
+  then run the inspected saved helper with:
+    -ClientName "<actual client>" -ConfigPath "<verified absolute config file>"
+  DSH's known profile YAML can use this route when editing is allowed. The helper
+  requires one exact Shiliu URL value in a UTF-8 JSON/YAML/TOML file, backs up the
+  original, preserves other content, and refuses ambiguous targets or concurrent
+  edits. It never prints the key/address. Do not invent a replacement script.
+  For a UI-only client or a platform that forbids Agent edits, use instead:
+    -ClientName "<actual client>" -CopyToClipboard
+  After webpage approval the helper places the personal address in the local
+  clipboard; ask the user only to paste into the existing connector URL and save,
+  with headers empty. Do not read the clipboard into chat or make the user find a key.
+  By default it also updates user-scope SHILIU_AI_API_KEY for local editing; use
+  -SkipEditingCredential when that separate local-editing credential is not wanted.
+  personal_url_prepared is not installation success: reload if needed and verify
+  native tools/free balance. If no supported handoff/storage path is available,
+  report the limitation; do not fall back to manual key collection or reset.
 Then reconnect and complete section 3. An invalid or reset key never returns 401
 here: the connection offers only shiliu_reconnect; follow recovery.txt.
 If the client later gains OAuth support, the personal URL keeps working. Switch to
@@ -257,6 +283,8 @@ Never delete broad caches, unrelated servers, credentials or replace PATH/config
 - cancelled: await the user's decision to continue; no fallback.
 - oauth_failed: switch to the personal URL (section 2b), not to HTTP fallback.
 - personal_url_incomplete: report its phase; do not reset the key or loop retries.
+- personal_url_prepared: apply clipboard URL in the client if needed, reload and
+  verify native MCP; do not acquire credentials again or switch to direct HTTP.
 - configuration_failed: documented settings still cannot be saved after repair.
   An already existing shiliu_mcp entry is never configuration_failed.
 - client_unsupported: client has no documented remote MCP path.

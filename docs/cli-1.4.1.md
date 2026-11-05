@@ -1,6 +1,6 @@
 # CLI 1.4.1 存量用户兼容修复
 
-状态：本地候选，未发布 npm，未同步官网。
+状态：已发布 npm，官网安装/接入文件已同步。2026-10-30 通过公开 npm 注册表和公网下载重新核验，详情见下文。
 
 ## 背景
 
@@ -24,3 +24,10 @@
 - CLI 全量 222 项测试通过，含新增存量兼容 7 项（全部使用 `--dry-run` 与临时 HOME）。
 - Windows 安装器行为测试（含存量 stdio 分支）、固定脚本测试、POSIX 安装器语法检查通过。
 - `connect-mcp.ps1`：临时 `CODEX_HOME` 新用户正常配置、二次运行返回 `existing_installation`；本机真实 Codex/Claude stdio 条目返回 `existing_installation` 且配置字节不变。
+
+## 发布核验（2026-10-30）
+
+- 主线包含 PR #40，提交 `5e51e8f7f4efd15ea823f31f3981d1d84d7b0bbd`。
+- 公开 npm 注册表记录：`@bigbrain-work/mcp-connect@1.4.1` 于 2026-10-28 21:52:38（UTC+08:00）发布；本次查询的 `latest` 为 1.4.1。
+- 从 `https://bigbrain.work/shiliuAI/` 下载 `install.txt`、`install-stdio.txt`、`install.sh`、`install.ps1`、`recovery.txt`、`connect-mcp.ps1`、`connect-http.ps1`、`invoke-http.ps1`、`install-skill.ps1`、`onboarding.json`：10 个文件均为 HTTP 200，并与该主线源码逐字节一致。
+- 本次为发布状态回读与文档修正；上节列出的测试属于原改动验证，本次未重跑。未以 npm/静态文件发布推定 Java 后端部署或 DSH 原生接入验收完成。

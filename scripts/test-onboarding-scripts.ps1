@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-foreach ($name in @('connect-mcp.ps1', 'connect-http.ps1', 'invoke-http.ps1', 'install-skill.ps1')) {
+foreach ($name in @('connect-mcp.ps1', 'configure-mcp-client.ps1', 'connect-http.ps1', 'connect-personal.ps1', 'invoke-http.ps1', 'install-skill.ps1')) {
     $tokens = $null; $errors = $null
     [Management.Automation.Language.Parser]::ParseFile((Join-Path $root $name), [ref]$tokens, [ref]$errors) | Out-Null
     if (@($errors).Count) { throw "PowerShell syntax check failed: $name" }

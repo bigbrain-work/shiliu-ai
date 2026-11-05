@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [ValidateSet('codex', 'claude', 'cursor')][string]$Client,
+    [ValidateSet('codex', 'claude', 'cursor', 'workbuddy', 'dsh')][string]$Client,
     [string]$TargetDir,
     [ValidateSet('user', 'project')][string]$Scope = 'user',
     [string]$ProjectPath
@@ -37,14 +37,21 @@ function Assert-SkillParent([string]$Path) {
     return $full
 }
 try {
-    if ($PSBoundParameters.ContainsKey('Client') -eq $PSBoundParameters.ContainsKey('TargetDir')) { throw 'choose_client_or_target_directory' }
+    $hasClient = $PSBoundParameters.ContainsKey('Client')
+    $hasTarget = $PSBoundParameters.ContainsKey('TargetDir')
+    if ((-not $hasClient -and -not $hasTarget) -or ($hasClient -and $hasTarget -and $Client -notin @('workbuddy','dsh'))) { throw 'choose_client_or_target_directory' }
+    if ($Client -eq 'workbuddy' -and -not $hasTarget) { throw 'client_target_directory_required' }
     $base = 'https://bigbrain.work/shiliuAI'
     $root = [Environment]::GetFolderPath('UserProfile')
     if ($Scope -eq 'project') {
         if (-not $ProjectPath) { throw 'project_path_required' }
         $root = (Resolve-Path -LiteralPath $ProjectPath).Path
     }
-    $parent = if ($PSBoundParameters.ContainsKey('TargetDir')) { $TargetDir } elseif ($Client -eq 'claude') { Join-Path $root '.claude\skills' } else { Join-Path $root '.agents\skills' }
+    $parent = if ($hasTarget) { $TargetDir } elseif ($Client -eq 'claude') { Join-Path $root '.claude\skills' }
+        elseif ($Client -eq 'dsh') {
+            $dshRoot = if ($Scope -eq 'user' -and $env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $root '.dsh' }
+            Join-Path $dshRoot 'skills'
+        } else { Join-Path $root '.agents\skills' }
     $parent = Assert-SkillParent $parent
     $target = Join-Path $parent 'shiliu-ai-mcp'
     if (Test-Path -LiteralPath $target) {
@@ -71,7 +78,7 @@ try {
     @{ state = 'installed'; path = $target; message = 'Skill 文件已安装；还需确认客户端识别启用，并在新会话中加载。' } | ConvertTo-Json
 } catch {
     $reason = 'installation_failed'
-    if ($_.Exception.Message -in @('invalid_target_directory', 'protected_target_directory', 'choose_client_or_target_directory', 'project_path_required', 'invalid_manifest', 'integrity_failed', 'missing_skill')) { $reason = $_.Exception.Message }
+    if ($_.Exception.Message -in @('invalid_target_directory', 'protected_target_directory', 'choose_client_or_target_directory', 'client_target_directory_required', 'project_path_required', 'invalid_manifest', 'integrity_failed', 'missing_skill')) { $reason = $_.Exception.Message }
     @{ state = 'optional_failed'; component = 'Skill'; reason = $reason; message = 'Skill 安装未成功，但不影响正常使用。' } | ConvertTo-Json
     exit 1
 } finally {

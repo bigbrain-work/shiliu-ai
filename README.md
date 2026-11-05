@@ -24,7 +24,7 @@ shiliu skill install --agent cursor --scope user --json
 
 默认远程 HTTP MCP，使用客户端 OAuth 打开石榴 AI 网页：已登录确认授权，未登录先网页登录再确认。
 不以安装 CLI、Node/npm 或 Skill 为前提。完整固定流程见官网 `install.txt`、`onboarding.json`。
-本分支为未发布的协同改造候选；后端、前端和静态指南需协调上线。
+远程 OAuth 接入改造已合入主线；CLI 与官网分发状态见下文“发布状态”。各客户端接入仍以原生 MCP 免费余额调用验收为准。
 
 ```bash
 codex mcp add shiliu_mcp --url https://api.bigbrain.work/shiliu/mcp
@@ -37,6 +37,11 @@ codex mcp login shiliu_mcp
 MCP 成功后绝不获取 API Key。仅确认客户端接入失败时，另行网页确认读取已有 Key，优先安全凭据存储，否则使用 `connect-http.ps1` 配置用户环境变量。
 旧版 `shiliu login --no-wait --json` 与 `shiliu install --transport stdio` 保留为显式兼容路径，不用于新默认流程。
 
+## DeepSeek Harness（DSH）接入
+
+现有 npm 包保留标准 stdio MCP 服务，可作为 DSH 内置 MCP 客户端的连接目标；默认 OAuth 接入流程的简化没有移除这项能力。
+Windows 固定 helper 已提供 DSH / WorkBuddy 配置适配：指定经核实的 ConfigPath 后，保留其他连接并按各客户端字段创建或修正石榴条目；OAuth 不可用时可接网页确认后的个人地址交接。DSH 插件组合包未发布；目标客户端新装、重启与 Skill 加载仍须实际验收。用法见 [配置适配](docs/client-config-adapters-20261105.md)，历史评估见 [DSH 接入评估](docs/dsh-integration.md)。
+
 ## 安全原则
 
 - 不在命令参数、仓库、日志或 Agent 配置中保存真实凭据。
@@ -48,11 +53,11 @@ MCP 成功后绝不获取 API Key。仅确认客户端接入失败时，另行�
 ## 发布状态
 
 - 公共仓库：`bigbrain-work/shiliu-ai`
-- npm 版本以 `npm/mcp-connect/package.json` 和对应发布记录为准；源码修改不代表已发布。
+- 源码版本见 `npm/mcp-connect/package.json`；已发布版本以 npm 注册表及对应发布记录为准，源码修改不代表已发布。
 - 机器可读安装指南：`https://bigbrain.work/shiliuAI/install.txt`
 - Windows 安装问题与发布验收：`docs/windows-install-acceptance.md`
 - CLI 与官网安装文件发布流程：`RELEASE_CLI.md`
-- 各历史版本变更见 `docs/cli-<版本>.md`；1.4.0 已于 2026-10-28 发布，存量兼容修复候选为 1.4.1（未发布）。
+- 各历史版本变更见 `docs/cli-<版本>.md`；1.4.0、1.4.1 均已于 2026-10-28 发布 npm。2026-10-30 核验公开 `latest` 为 1.4.1，官网 10 个安装/接入文件与当前主线逐字节一致，详见 [1.4.1 记录](docs/cli-1.4.1.md)。
 
 ## 更新边界
 
