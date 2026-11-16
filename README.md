@@ -6,6 +6,7 @@
 
 - `skills/shiliu-ai-mcp`：供 Codex、Claude Code 等 Agent 安装的机器可读 Skill。
 - `npm/mcp-connect`：连接石榴 AI 远程 MCP 的跨平台命令行工具。
+- `npm/dsh-plugin-shiliu-ai`：DeepSeek Harness 的独立远程 MCP 插件包。
 
 ## 安装 Skill
 
@@ -40,7 +41,9 @@ MCP 成功后绝不获取 API Key。仅确认客户端接入失败时，另行�
 ## DeepSeek Harness（DSH）接入
 
 现有 npm 包保留标准 stdio MCP 服务，可作为 DSH 内置 MCP 客户端的连接目标；默认 OAuth 接入流程的简化没有移除这项能力。
-Windows 固定 helper 已提供 DSH / WorkBuddy 配置适配：指定经核实的 ConfigPath 后，保留其他连接并按各客户端字段创建或修正石榴条目；OAuth 不可用时可接网页确认后的个人地址交接。DSH 插件组合包未发布；目标客户端新装、重启与 Skill 加载仍须实际验收。用法见 [配置适配](docs/client-config-adapters-20261105.md)，历史评估见 [DSH 接入评估](docs/dsh-integration.md)。
+Windows 固定 helper 已提供 DSH / WorkBuddy 配置适配：指定经核实的 ConfigPath 后，保留其他连接并按各客户端字段创建或修正石榴条目；OAuth 不可用时可接网页确认后的个人地址交接。用法见 [配置适配](docs/client-config-adapters-20261105.md)，历史评估见 [DSH 接入评估](docs/dsh-integration.md)。
+
+独立插件包 `@bigbrain-work/dsh-plugin-shiliu-ai` 的源码及固定版本安装、API Key 配置、免费验证和卸载步骤见 [DSH 插件说明](npm/dsh-plugin-shiliu-ai/README.md)。本包仅声明已验证的 DSH 0.2.2-rc.1 兼容范围，公开发布状态以 npm 注册表为准。它不替换现有 CLI，也不自动更改其他客户端的 OAuth 配置。
 
 ## 安全原则
 

@@ -1,0 +1,23 @@
+{
+  "name": "@bigbrain-work/dsh-plugin-shiliu-ai",
+  "version": "0.1.0",
+  "description": "石榴 AI · Shiliu AI remote MCP connector for DeepSeek Harness",
+  "type": "module",
+  "main": "index.mjs",
+  "files": ["index.mjs", "cordis.patch.yml"],
+  "engines": { "node": ">=24.9.0", "dsh": "0.2.2-rc.1" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "peerDependencies": { "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.1" },
+  "devDependencies": { "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.1" },
+  "homepage": "https://www.bigbrain.work/shiliuai/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bigbrain-work/shiliu-ai.git",
+    "directory": "npm/dsh-plugin-shiliu-ai"
+  },
+  "bugs": { "url": "https://github.com/bigbrain-work/shiliu-ai/issues" },
+  "author": "Bigbrain Work",
+  "license": "MIT",
+  "keywords": ["dsh-plugin", "deepseek-harness", "mcp", "shiliu-ai", "douyin", "video", "石榴AI", "抖音", "视频文案"],
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" }
+}
