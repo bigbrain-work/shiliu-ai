@@ -168,7 +168,9 @@ test("proxy reports CREDENTIAL_UNAVAILABLE and recovers on the next deduplicated
   });
   const tokenStore = new TokenStore({ entryFactory: async () => entry });
   const session = createProxySession({
-    resolveAuth: () => resolveAuthorization({ home, tokenStore, env: {} }),
+    // Keep the legacy-key fallback inside the temporary home. On Windows an
+    // empty env still permits reading the real user's persistent environment.
+    resolveAuth: () => resolveAuthorization({ home, tokenStore, env: {}, platform: "linux" }),
     connectRemote: async () => {
       connections++;
       return { getServerCapabilities: () => ({}), listTools: async () => ({ tools: [{ name: "fixture_tool" }] }), close: async () => {} };
