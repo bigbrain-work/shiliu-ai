@@ -1,0 +1,3 @@
+- insert:
+    - id: shiliu-ai-mcp
+      name: '@bigbrain-work/dsh-plugin-shiliu-ai'
